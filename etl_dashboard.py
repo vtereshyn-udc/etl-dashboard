@@ -513,6 +513,60 @@ def load_growth_per_day():
         return {}
     return {row[0]: int(row[1]) for row in r}
 
+
+@st.cache_data(ttl=60)
+def load_context_for_ai():
+    """Збирає контекст про систему для AI"""
+    ctx = {}
+
+    # ETL статус
+    etl = load_etl_log()
+    ctx["etl_log"] = {k: {
+        "ran_at": str(v.get("ran_at",""))[:16],
+        "rows": v.get("rows_saved", 0),
+        "elapsed_sec": float(v.get("elapsed_sec") or 0),
+        "status": v.get("status","")
+    } for k, v in etl.items()}
+
+    # Системні метрики
+    m = load_system_metrics()
+    if m:
+        ctx["system"] = {
+            "cpu": m.get("cpu"), "ram_pct": m.get("ram_pct"),
+            "disk_pct": m.get("disk_pct"), "db_size_mb": m.get("db_size_mb"),
+            "run_forever_alive": m.get("alive"),
+            "run_forever_uptime_sec": m.get("uptime_sec"),
+            "running_workers": m.get("workers"),
+        }
+
+    # Топ таблиць
+    db = load_db_overview()
+    if not db.empty:
+        top = db.head(10)[["full_name","size_mb","row_count"]].to_dict("records")
+        ctx["top_tables"] = top
+
+    # Алерти
+    now_dt = datetime.now()
+    alerts = []
+    for task_type, threshold_h in ALERT_THRESHOLDS.items():
+        log = etl.get(task_type)
+        if not log or not log.get("ran_at"):
+            alerts.append({"task": task_type, "issue": "never_ran"})
+            continue
+        ran_at = log["ran_at"]
+        ran_str = str(ran_at)
+        try:
+            from datetime import datetime as dt2
+            ran_naive = ran_at.replace(tzinfo=None) if hasattr(ran_at,"tzinfo") and ran_at.tzinfo else ran_at
+            h_ago = (now_dt - ran_naive).total_seconds() / 3600
+            if h_ago > threshold_h:
+                alerts.append({"task": task_type, "hours_ago": round(h_ago,1), "threshold": threshold_h})
+        except:
+            pass
+    ctx["alerts"] = alerts
+
+    return ctx
+
 # ============================================================
 # SIDEBAR
 # ============================================================
@@ -531,7 +585,7 @@ def render_sidebar():
 
         page = st.radio(
             "nav",
-            options=["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система"],
+            options=["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система", "🤖 AI"],
             label_visibility="collapsed",
             key="nav_radio"
         )
@@ -1090,6 +1144,141 @@ def page_database():
 
     st.markdown(schema_html, unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
+
+
+def page_ai():
+    now = now_kyiv()
+    st.markdown(f"""
+    <div class="page-header">
+        <div class="page-title">🤖 AI Аналітик</div>
+        <div class="page-sub">Gemini 2.5 Flash · запитай про систему · {now.strftime('%H:%M')} Kyiv</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Ініціалізація чату
+    if "ai_messages" not in st.session_state:
+        st.session_state.ai_messages = []
+
+    gemini_key   = st.secrets.get("GEMINI_API_KEY", "")
+    gemini_model = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
+
+    if not gemini_key:
+        st.warning("⚠️ GEMINI_API_KEY не знайдено в secrets")
+        return
+
+    # Контекст системи
+    ctx = load_context_for_ai()
+    import json
+    ctx_str = json.dumps(ctx, ensure_ascii=False, default=str, indent=2)
+
+    SYSTEM_PROMPT = f"""Ти — AI аналітик ETL системи Amazon Data Pipeline компанії UDC Parts.
+Відповідай коротко, по суті, українською або російською (як запитують).
+Використовуй емодзі для наочності.
+
+Поточний стан системи (JSON):
+{ctx_str}
+
+Що ти знаєш:
+- run_forever.py — планувальник що запускає воркери по розкладу (Київ TZ)
+- etl_log — таблиця з часом запуску кожного воркера
+- Таблиці: csv.*, spapi.*, api_ad.*, amzudc.* — дані Amazon
+- Дашборд на Streamlit Cloud показує статус системи в реальному часі
+
+Якщо питають про проблеми — дивись на alerts і etl_log.
+Якщо питають про розміри — дивись top_tables.
+Якщо питають про сервер — дивись system."""
+
+    # Швидкі запити
+    st.markdown(f'<div style="margin-bottom:12px">', unsafe_allow_html=True)
+    quick_col1, quick_col2, quick_col3, quick_col4 = st.columns(4)
+    quick_questions = [
+        "Який стан системи зараз?",
+        "Які проблеми є?",
+        "Яка таблиця найбільша?",
+        "Які воркери найповільніші?",
+    ]
+    for col, q in zip([quick_col1, quick_col2, quick_col3, quick_col4], quick_questions):
+        with col:
+            if st.button(q, use_container_width=True):
+                st.session_state.ai_messages.append({"role": "user", "content": q})
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    # Історія чату
+    chat_container = st.container()
+    with chat_container:
+        for msg in st.session_state.ai_messages:
+            is_user = msg["role"] == "user"
+            bubble_bg = "#1a2a40" if dark else "#e8f0fe"
+            align = "flex-end" if is_user else "flex-start"
+            bubble_color = "#3b82f6" if is_user else ("#0d1220" if dark else "#ffffff")
+            text_color = "#ffffff" if is_user else text1
+            border_r = "18px 4px 18px 18px" if is_user else "4px 18px 18px 18px"
+            st.markdown(f"""
+            <div style="display:flex;justify-content:{align};margin-bottom:12px">
+                <div style="max-width:80%;background:{bubble_color};color:{text_color};
+                    padding:12px 16px;border-radius:{border_r};
+                    border:1px solid {border};font-size:14px;line-height:1.6">
+                    {msg["content"]}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Інпут
+    col_inp, col_send, col_clear = st.columns([7, 1, 1])
+    with col_inp:
+        user_input = st.chat_input("Запитай про систему...")
+    with col_clear:
+        if st.button("🗑️", help="Очистити чат"):
+            st.session_state.ai_messages = []
+            st.rerun()
+
+    # Обробка запиту
+    if user_input:
+        st.session_state.ai_messages.append({"role": "user", "content": user_input})
+
+        with st.spinner("🤖 Думаю..."):
+            try:
+                import requests as req
+
+                # Формуємо history для Gemini
+                history = []
+                for msg in st.session_state.ai_messages[:-1]:
+                    history.append({
+                        "role": "user" if msg["role"] == "user" else "model",
+                        "parts": [{"text": msg["content"]}]
+                    })
+
+                # Додаємо системний промпт до першого повідомлення
+                contents = []
+                if not history:
+                    contents.append({
+                        "role": "user",
+                        "parts": [{"text": SYSTEM_PROMPT + "\n\nПитання: " + user_input}]
+                    })
+                else:
+                    contents = history
+                    contents.append({
+                        "role": "user",
+                        "parts": [{"text": user_input}]
+                    })
+
+                resp = req.post(
+                    f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}",
+                    json={"contents": contents, "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]}},
+                    timeout=30
+                )
+
+                if resp.status_code == 200:
+                    answer = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                else:
+                    answer = f"❌ Помилка API: {resp.status_code} — {resp.text[:200]}"
+
+            except Exception as e:
+                answer = f"❌ Помилка: {e}"
+
+        st.session_state.ai_messages.append({"role": "assistant", "content": answer})
+        st.rerun()
 
 # ============================================================
 # MAIN
