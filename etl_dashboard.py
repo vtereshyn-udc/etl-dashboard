@@ -392,6 +392,77 @@ def load_all():
         })
     return rows
 
+
+@st.cache_data(ttl=30)
+def load_system_metrics():
+    """Останні метрики сервера"""
+    r = query("""
+        SELECT cpu_pct, ram_pct, ram_used_mb, ram_total_mb,
+               disk_pct, disk_used_gb, disk_total_gb,
+               db_connections, db_size_mb,
+               run_forever_alive, run_forever_pid, run_forever_uptime_sec,
+               running_workers, collected_at
+        FROM public.system_metrics
+        ORDER BY collected_at DESC LIMIT 1
+    """)
+    if not r:
+        return None
+    row = r[0]
+    return {
+        "cpu": row[0], "ram_pct": row[1], "ram_used_mb": row[2], "ram_total_mb": row[3],
+        "disk_pct": row[4], "disk_used_gb": row[5], "disk_total_gb": row[6],
+        "db_conn": row[7], "db_size_mb": row[8],
+        "alive": row[9], "pid": row[10], "uptime_sec": row[11],
+        "workers": row[12], "collected_at": row[13]
+    }
+
+@st.cache_data(ttl=300)
+def load_table_sizes():
+    r = query("""
+        SELECT DISTINCT ON (table_name) table_name, size_mb, row_count
+        FROM public.system_table_sizes
+        ORDER BY table_name, collected_at DESC
+    """)
+    if not r:
+        return []
+    return sorted(r, key=lambda x: x[1] or 0, reverse=True)
+
+@st.cache_data(ttl=30)
+def load_cpu_history():
+    r = query("""
+        SELECT collected_at, cpu_pct, ram_pct
+        FROM public.system_metrics
+        WHERE collected_at >= NOW() - INTERVAL '2 hours'
+        ORDER BY collected_at ASC
+    """)
+    if not r:
+        return pd.DataFrame()
+    return pd.DataFrame(r, columns=["collected_at", "cpu_pct", "ram_pct"])
+
+def fmt_uptime(sec):
+    if not sec:
+        return "—"
+    h = sec // 3600
+    m = (sec % 3600) // 60
+    if h > 0:
+        return f"{h}г {m:02d}хв"
+    return f"{m}хв"
+
+def gauge_html(value, max_val, color, label, unit="%"):
+    pct = min(100, round((value or 0) / max_val * 100))
+    bar_color = "#22c55e" if pct < 60 else "#f59e0b" if pct < 85 else "#ef4444"
+    return f"""
+    <div style="background:{bg2};border:1px solid {border};border-radius:10px;padding:14px 16px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
+            <span style="font-size:12px;color:{text4};font-weight:600;text-transform:uppercase;letter-spacing:.08em">{label}</span>
+            <span style="font-size:20px;font-weight:700;color:{bar_color};font-family:'JetBrains Mono',monospace">{value}{unit}</span>
+        </div>
+        <div style="height:6px;background:{"#1a2235" if dark else "#e2e8f0"};border-radius:3px;overflow:hidden">
+            <div style="width:{pct}%;height:100%;background:{bar_color};border-radius:3px;transition:width .3s"></div>
+        </div>
+    </div>"""
+
+
 # ============================================================
 # SIDEBAR
 # ============================================================
@@ -410,7 +481,7 @@ def render_sidebar():
 
         page = st.radio(
             "nav",
-            options=["📊 Статус", "📈 Аналітика"],
+            options=["📊 Статус", "📈 Аналітика", "🖥️ Система"],
             label_visibility="collapsed",
             key="nav_radio"
         )
@@ -673,6 +744,114 @@ def _send_tg_alert(text):
         json={"chat_id": cid, "text": text, "parse_mode": "HTML"}, timeout=10).status_code == 200)
     st.success(f"✅ Надіслано {sent} підписникам!") if sent else st.warning("⚠️ Не вдалось надіслати")
 
+
+def page_system():
+    now = now_kyiv()
+    st.markdown(f"""
+    <div class="page-header">
+        <div class="page-title">🖥️ Система</div>
+        <div class="page-sub">Сервер · БД · Процеси · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    m = load_system_metrics()
+
+    if not m:
+        st.warning("⚠️ Немає даних — запусти `python system_monitor.py` на сервері")
+        st.code("python system_monitor.py", language="bash")
+        return
+
+    # Час збору
+    collected = m.get("collected_at")
+    if collected:
+        collected_naive = collected.replace(tzinfo=None) if hasattr(collected, "tzinfo") and collected.tzinfo else collected
+        age_sec = (datetime.now() - collected_naive).total_seconds()
+        age_str = f"{int(age_sec)}с тому" if age_sec < 120 else f"{int(age_sec/60)}хв тому"
+        freshness_color = "#22c55e" if age_sec < 60 else "#f59e0b" if age_sec < 180 else "#ef4444"
+        st.markdown(f'<div style="font-size:11px;color:{freshness_color};font-family:'JetBrains Mono',monospace;margin-bottom:12px">● Дані оновлено {age_str}</div>', unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns([1, 1, 1])
+
+    # ── Сервер
+    with col1:
+        st.markdown(f'<div class="stat-card"><h4>🖥️ Сервер</h4>', unsafe_allow_html=True)
+        st.markdown(gauge_html(m.get("cpu"), 100, "#3b82f6", "CPU"), unsafe_allow_html=True)
+        st.markdown(gauge_html(m.get("ram_pct"), 100, "#8b5cf6", "RAM",
+            unit=f"% ({m.get('ram_used_mb',0)//1024}GB / {m.get('ram_total_mb',0)//1024}GB)"), unsafe_allow_html=True)
+        st.markdown(gauge_html(m.get("disk_pct"), 100, "#06b6d4", "Disk",
+            unit=f"% ({m.get('disk_used_gb',0):.0f} / {m.get('disk_total_gb',0):.0f} GB)"), unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Процеси
+    with col2:
+        st.markdown(f'<div class="stat-card"><h4>⚙️ Процеси</h4>', unsafe_allow_html=True)
+        alive = m.get("alive", False)
+        pid = m.get("pid")
+        uptime = fmt_uptime(m.get("uptime_sec"))
+        workers = m.get("workers") or "—"
+        status_color = "#22c55e" if alive else "#ef4444"
+        status_text = "RUNNING" if alive else "STOPPED"
+        st.markdown(f"""
+        <div style="background:{"rgba(34,197,94,.08)" if alive else "rgba(239,68,68,.08)"};border:1px solid {"rgba(34,197,94,.2)" if alive else "rgba(239,68,68,.2)"};border-radius:10px;padding:14px 16px;margin-bottom:10px">
+            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+                <div style="width:8px;height:8px;border-radius:50%;background:{status_color};{"box-shadow:0 0 6px " + status_color if dark else ""}"></div>
+                <span style="font-size:14px;font-weight:700;color:{status_color}">run_forever.py</span>
+                <span style="font-size:11px;color:{status_color};background:{"rgba(34,197,94,.1)" if alive else "rgba(239,68,68,.1)"};padding:1px 8px;border-radius:10px">{status_text}</span>
+            </div>
+            <div style="font-size:12px;color:{text2};font-family:'JetBrains Mono',monospace">
+                PID: {pid or "—"} · Uptime: {uptime}
+            </div>
+        </div>
+        <div style="font-size:11px;color:{text4};margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:600">Запущені воркери:</div>
+        <div style="font-size:12px;color:{"#4a9e6b" if workers != "—" else text4};font-family:'JetBrains Mono',monospace">{workers}</div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── БД
+    with col3:
+        st.markdown(f'<div class="stat-card"><h4>🗄️ База даних</h4>', unsafe_allow_html=True)
+        db_size = m.get("db_size_mb", 0) or 0
+        db_conn = m.get("db_conn", 0) or 0
+        st.markdown(f"""
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
+            <div style="background:{bg3};border:1px solid {border};border-radius:8px;padding:12px;text-align:center">
+                <div style="font-size:22px;font-weight:700;color:#3b82f6;font-family:'JetBrains Mono',monospace">{db_size:.0f}</div>
+                <div style="font-size:10px;color:{text4};text-transform:uppercase;letter-spacing:.08em;margin-top:2px">MB розмір</div>
+            </div>
+            <div style="background:{bg3};border:1px solid {border};border-radius:8px;padding:12px;text-align:center">
+                <div style="font-size:22px;font-weight:700;color:#8b5cf6;font-family:'JetBrains Mono',monospace">{db_conn}</div>
+                <div style="font-size:10px;color:{text4};text-transform:uppercase;letter-spacing:.08em;margin-top:2px">З'єднань</div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Розміри таблиць
+    st.markdown(f'<div class="stat-card"><h4>📦 Розміри таблиць (топ 20)</h4>', unsafe_allow_html=True)
+    table_sizes = load_table_sizes()
+    if table_sizes:
+        max_size = max(r[1] or 0 for r in table_sizes[:20])
+        rows_html = ""
+        for table_name, size_mb, row_count in table_sizes[:20]:
+            bar_w = int((size_mb or 0) / max(max_size, 1) * 200)
+            bar_color = "#3b82f6" if (size_mb or 0) < 100 else "#8b5cf6" if (size_mb or 0) < 500 else "#ef4444"
+            rows_html += f"""<tr>
+                <td style="color:{text2};font-size:12px;padding:7px 12px;font-family:'JetBrains Mono',monospace">{table_name}</td>
+                <td style="padding:7px 12px">
+                    <div style="display:flex;align-items:center;gap:8px">
+                        <div style="width:{bar_w}px;height:6px;background:{bar_color};border-radius:3px;opacity:.8;min-width:2px"></div>
+                        <span style="color:{text1};font-size:12px;font-family:'JetBrains Mono',monospace">{size_mb:.1f} MB</span>
+                    </div>
+                </td>
+                <td style="color:{text4};font-size:11px;padding:7px 12px;font-family:'JetBrains Mono',monospace">{int(row_count or 0):,} рядків</td>
+            </tr>"""
+        st.markdown(f'<table style="width:100%;border-collapse:collapse">{rows_html}</table>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div style="color:{text4};font-size:13px">Дані з'являться через 5 хвилин після запуску system_monitor.py</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="etl-footer">оновлення 30с · system_monitor.py · Kyiv TZ</div>', unsafe_allow_html=True)
+
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -683,7 +862,9 @@ def main():
 
     if page == "📊 Статус":
         page_status(data)
-    else:
+    elif page == "📈 Аналітика":
         page_analytics()
+    else:
+        page_system()
 
 main()
