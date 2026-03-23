@@ -487,4 +487,4 @@ def main():
     <div class="etl-footer">cache 2хв · {len(filtered)}/{len(data)} таблиць · Kyiv TZ</div>
     """, unsafe_allow_html=True)
 
-main()
+main() 
