@@ -1,11 +1,11 @@
 """
-ETL Monitor v2.0
+ETL Monitor v2.1
 Amazon Data Pipeline — Status Dashboard
+Fixed: HTML rendering, logo, day/night theme
 """
 
 import streamlit as st
 import psycopg2
-import pandas as pd
 from datetime import datetime, date, timedelta
 import pytz
 
@@ -20,17 +20,13 @@ st.set_page_config(
     initial_sidebar_state="collapsed"
 )
 
-# ============================================================
-# TIMEZONE
-# ============================================================
-
 KYIV_TZ = pytz.timezone("Europe/Kyiv")
 
 def now_kyiv():
     return datetime.now(KYIV_TZ)
 
 # ============================================================
-# РОЗКЛАД — синхронізовано з run_forever.py
+# РОЗКЛАД
 # ============================================================
 
 SCHEDULE = [
@@ -71,39 +67,29 @@ SCHEDULE = [
     (3,  35, "ledger_detail",    7),
 ]
 
-# task_type → (таблиця, конфлікт ключ, іконка, назва)
 TASK_MAP = {
-    "ads":              ("amazon_ads_sp",         "campaign_id",      "🎯", "ADS Campaigns"),
-    "bulk_daily":       ("fba_shipment_items",     "shipment_id",      "📦", "FBA Inbound"),
-    "inventory":        ("fba_inventory",          "sku",              "🏭", "FBA Inventory"),
-    "transactions":     ("finance_events",         "transaction_id",   "💰", "Finance Events"),
-    "shipments":        ("fba_shipments",          "amazon_order_id",  "🚚", "Shipments"),
-    "all_orders":       ("orders",                 "amazon_order_id",  "🛒", "Orders"),
-    "manage_fba":       ("manage_fba_inventory",   "sku",              "📋", "Manage FBA"),
-    "awd_inventory":    ("spapi_awd_inventory",    "sku",              "🏢", "AWD Inventory"),
-    "sales_traffic":    ("spapi_sales_traffic",    "date",             "📊", "Sales & Traffic"),
-    "promotions":       ("promotions",             "promotion_id",     "🎁", "Promotions"),
-    "fba_returns":      ("fba_returns",            "order_id",         "🔄", "FBA Returns"),
-    "fba_replacements": ("fba_replacements",       "order_id",         "🔁", "FBA Replacements"),
-    "rank_tracker":     ("rank_tracker",           "keyword",          "🔍", "Rank Tracker"),
-    "ledger_summary":   ("spapi_ledger_summary",   "date",             "📒", "Ledger Summary"),
-    "ledger_detail":    ("spapi_ledger_detail",    "date",             "📒", "Ledger Detail"),
+    "ads":              ("amazon_ads_sp",         "🎯", "ADS Campaigns"),
+    "bulk_daily":       ("fba_shipment_items",     "📦", "FBA Inbound"),
+    "inventory":        ("fba_inventory",          "🏭", "FBA Inventory"),
+    "transactions":     ("finance_events",         "💰", "Finance Events"),
+    "shipments":        ("fba_shipments",          "🚚", "Shipments"),
+    "all_orders":       ("orders",                 "🛒", "Orders"),
+    "manage_fba":       ("manage_fba_inventory",   "📋", "Manage FBA"),
+    "awd_inventory":    ("spapi_awd_inventory",    "🏢", "AWD Inventory"),
+    "sales_traffic":    ("spapi_sales_traffic",    "📊", "Sales & Traffic"),
+    "promotions":       ("promotions",             "🎁", "Promotions"),
+    "fba_returns":      ("fba_returns",            "🔄", "FBA Returns"),
+    "fba_replacements": ("fba_replacements",       "🔁", "FBA Replacements"),
+    "rank_tracker":     ("rank_tracker",           "🔍", "Rank Tracker"),
+    "ledger_summary":   ("spapi_ledger_summary",   "📒", "Ledger Summary"),
+    "ledger_detail":    ("spapi_ledger_detail",    "📒", "Ledger Detail"),
 }
 
 # ============================================================
-# РОЗКЛАД HELPERS
+# SCHEDULE HELPERS
 # ============================================================
 
-def get_schedule_for_task(task_type):
-    """Повертає всі слоти для task_type"""
-    slots = []
-    for h, m, t, p in SCHEDULE:
-        if t == task_type:
-            slots.append((h, m))
-    return slots
-
 def get_next_run(task_type):
-    """Наступний запуск по Києву"""
     now = now_kyiv()
     today = now.date()
     candidates = []
@@ -118,12 +104,20 @@ def get_next_run(task_type):
 
 def get_runs_per_day(task_type):
     count = sum(1 for _, _, t, _ in SCHEDULE if t == task_type)
-    if count == 1:
-        return "1× / день"
-    elif count <= 4:
-        return f"{count}× / день"
-    else:
-        return f"{count}× / день"
+    return f"{count}× / день"
+
+def fmt_next(task_type):
+    nxt = get_next_run(task_type)
+    if not nxt:
+        return "—"
+    now = now_kyiv()
+    diff = (nxt - now).total_seconds()
+    h = int(diff // 3600)
+    m = int((diff % 3600) // 60)
+    time_str = nxt.strftime('%H:%M')
+    if h == 0:
+        return f"{time_str} ({m}хв)"
+    return f"{time_str} ({h}г {m:02d}хв)"
 
 # ============================================================
 # DB
@@ -151,7 +145,7 @@ def query(sql, params=None):
             with conn.cursor() as cur:
                 cur.execute(sql, params or ())
                 return cur.fetchall()
-        except Exception as e:
+        except Exception:
             return None
 
 def table_exists(table):
@@ -159,13 +153,10 @@ def table_exists(table):
     return r and r[0][0]
 
 def get_stats(table):
-    """(count, last_date)"""
     if not table_exists(table):
         return None, None
-
     r = query(f"SELECT COUNT(*) FROM {table}")
     count = r[0][0] if r else 0
-
     last_date = None
     for col in ["snapshot_date", "report_date", "date", "updated_at", "created_at", "inserted_at"]:
         r2 = query(
@@ -177,11 +168,10 @@ def get_stats(table):
             if r3 and r3[0][0]:
                 last_date = r3[0][0]
                 break
-
     return count, last_date
 
 # ============================================================
-# СТАТУС
+# STATUS
 # ============================================================
 
 def hours_since(last_date):
@@ -195,23 +185,21 @@ def hours_since(last_date):
     return (now - last_dt).total_seconds() / 3600
 
 def get_status(task_type, last_date):
-    slots = get_schedule_for_task(task_type)
-    if not slots:
+    runs = sum(1 for _, _, t, _ in SCHEDULE if t == task_type)
+    if not runs:
         return "unknown"
-    runs_per_day = len(slots)
-    # Очікуваний інтервал + буфер 50%
-    expected_hours = (24 / runs_per_day) * 1.5
+    expected_h = (24 / runs) * 1.5
     h = hours_since(last_date)
     if h is None:
         return "empty"
-    if h <= expected_hours:
+    if h <= expected_h:
         return "ok"
-    elif h <= expected_hours * 2.5:
+    elif h <= expected_h * 2.5:
         return "warn"
     else:
         return "stale"
 
-def fmt_last(last_date):
+def fmt_last(last_date, status):
     if last_date is None:
         return "—"
     h = hours_since(last_date)
@@ -224,164 +212,216 @@ def fmt_last(last_date):
     else:
         return f"{int(h/24)}д тому"
 
-def fmt_next(task_type):
-    nxt = get_next_run(task_type)
-    if not nxt:
-        return "—"
-    now = now_kyiv()
-    diff = (nxt - now).total_seconds()
-    h = int(diff // 3600)
-    m = int((diff % 3600) // 60)
-    time_str = nxt.strftime('%H:%M')
-    if h == 0:
-        return f"{time_str} (через {m}хв)"
-    return f"{time_str} (через {h}г {m:02d}хв)"
+# ============================================================
+# LOAD DATA
+# ============================================================
+
+@st.cache_data(ttl=120)
+def load_all():
+    rows = []
+    for task_type, (table, icon, label) in TASK_MAP.items():
+        count, last_date = get_stats(table)
+        status = get_status(task_type, last_date) if count is not None else "empty"
+        rows.append({
+            "task":      task_type,
+            "icon":      icon,
+            "label":     label,
+            "table":     table,
+            "count":     count,
+            "last_date": last_date,
+            "last_str":  fmt_last(last_date, status),
+            "next_str":  fmt_next(task_type),
+            "freq":      get_runs_per_day(task_type),
+            "status":    status,
+        })
+    return rows
+
+# ============================================================
+# THEME STATE
+# ============================================================
+
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = True
+
+dark = st.session_state.dark_mode
+
+# Кольори теми
+if dark:
+    bg         = "#080b12"
+    bg2        = "#0d1220"
+    bg3        = "#0f1520"
+    border     = "#151e30"
+    border2    = "#1a2a40"
+    text1      = "#f0f4ff"
+    text2      = "#8892a4"
+    text3      = "#3a4a6b"
+    text4      = "#2d3a52"
+    row_hover  = "#0f1724"
+    th_bg      = "#080b12"
+    selectbox_bg = "#0d1220"
+else:
+    bg         = "#f4f6fb"
+    bg2        = "#ffffff"
+    bg3        = "#f8f9fc"
+    border     = "#e2e8f0"
+    border2    = "#cbd5e1"
+    text1      = "#0f172a"
+    text2      = "#475569"
+    text3      = "#94a3b8"
+    text4      = "#cbd5e1"
+    row_hover  = "#f1f5f9"
+    th_bg      = "#f8f9fc"
+    selectbox_bg = "#ffffff"
 
 # ============================================================
 # CSS
 # ============================================================
 
-st.markdown("""
+st.markdown(f"""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
 
-* { box-sizing: border-box; }
+* {{ box-sizing: border-box; }}
+.stApp {{ background: {bg} !important; font-family: 'Inter', sans-serif; }}
+.block-container {{ padding-top: 1.5rem !important; max-width: 1400px; }}
 
-.stApp {
-    background: #080b12;
-    font-family: 'Inter', sans-serif;
-}
-
-/* Заголовок */
-.hdr {
+/* Header */
+.etl-header {{
     display: flex;
-    align-items: baseline;
-    gap: 12px;
-    margin-bottom: 2px;
-}
-.hdr-title {
-    font-size: 28px;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+}}
+.etl-logo {{
+    display: flex;
+    align-items: center;
+    gap: 14px;
+}}
+.etl-logo img {{
+    height: 32px;
+    filter: {'invert(0)' if not dark else 'brightness(0) invert(1)'};
+    opacity: {'1' if not dark else '0.85'};
+}}
+.etl-title {{
+    font-size: 22px;
     font-weight: 700;
-    color: #f0f4ff;
-    letter-spacing: -0.5px;
-}
-.hdr-version {
-    font-size: 11px;
-    color: #2d3a52;
+    color: {text1};
+    letter-spacing: -0.3px;
+}}
+.etl-version {{
+    font-size: 10px;
+    color: {text4};
     font-family: 'JetBrains Mono', monospace;
-    background: #0f1520;
-    padding: 2px 8px;
+    background: {bg3};
+    padding: 2px 7px;
     border-radius: 4px;
-    border: 1px solid #1a2235;
-}
-.hdr-sub {
-    font-size: 13px;
-    color: #3a4a6b;
-    margin-bottom: 28px;
+    border: 1px solid {border};
+    margin-left: 8px;
+}}
+.etl-sub {{
+    font-size: 12px;
+    color: {text3};
+    margin-bottom: 22px;
     font-family: 'JetBrains Mono', monospace;
-}
+}}
 
-/* Метрики */
-.metrics-row {
+/* Metrics */
+.metrics-row {{
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 24px;
-}
-.metric {
-    background: #0d1220;
-    border: 1px solid #151e30;
+    gap: 10px;
+    margin-bottom: 20px;
+}}
+.metric {{
+    background: {bg2};
+    border: 1px solid {border};
     border-radius: 10px;
-    padding: 18px 20px;
+    padding: 16px 18px;
     position: relative;
     overflow: hidden;
-}
-.metric::before {
+}}
+.metric::after {{
     content: '';
     position: absolute;
     top: 0; left: 0; right: 0;
     height: 2px;
-}
-.metric.ok::before    { background: #22c55e; }
-.metric.warn::before  { background: #f59e0b; }
-.metric.stale::before { background: #ef4444; }
-.metric.total::before { background: #3b82f6; }
-
-.metric-num {
-    font-size: 40px;
+}}
+.m-ok::after    {{ background: #22c55e; }}
+.m-warn::after  {{ background: #f59e0b; }}
+.m-stale::after {{ background: #ef4444; }}
+.m-total::after {{ background: #3b82f6; }}
+.metric-num {{
+    font-size: 38px;
     font-weight: 700;
-    line-height: 1;
     font-family: 'JetBrains Mono', monospace;
-}
-.metric.ok    .metric-num { color: #22c55e; }
-.metric.warn  .metric-num { color: #f59e0b; }
-.metric.stale .metric-num { color: #ef4444; }
-.metric.total .metric-num { color: #3b82f6; }
-
-.metric-lbl {
-    font-size: 11px;
-    color: #3a4a6b;
+    line-height: 1;
+}}
+.m-ok    .metric-num {{ color: #22c55e; }}
+.m-warn  .metric-num {{ color: #f59e0b; }}
+.m-stale .metric-num {{ color: #ef4444; }}
+.m-total .metric-num {{ color: #3b82f6; }}
+.metric-lbl {{
+    font-size: 10px;
+    color: {text3};
     text-transform: uppercase;
     letter-spacing: 0.1em;
-    margin-top: 6px;
+    margin-top: 5px;
     font-weight: 600;
-}
+}}
 
-/* Таблиця */
-.etl-wrap {
-    background: #0d1220;
-    border: 1px solid #151e30;
+/* Table wrap */
+.etl-wrap {{
+    background: {bg2};
+    border: 1px solid {border};
     border-radius: 12px;
     overflow: hidden;
-}
-.etl-table {
+    margin-top: 12px;
+}}
+.etl-table {{
     width: 100%;
     border-collapse: collapse;
     font-size: 13px;
-}
-.etl-table th {
-    background: #080b12;
-    color: #2d3a52;
+}}
+.etl-table th {{
+    background: {th_bg};
+    color: {text3};
     font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.12em;
-    padding: 12px 16px;
+    letter-spacing: 0.1em;
+    padding: 11px 16px;
     text-align: left;
     font-weight: 600;
-    border-bottom: 1px solid #151e30;
-}
-.etl-table td {
-    padding: 13px 16px;
-    border-bottom: 1px solid #0f1520;
-    color: #8892a4;
+    border-bottom: 1px solid {border};
+}}
+.etl-table td {{
+    padding: 12px 16px;
+    border-bottom: 1px solid {bg3};
     vertical-align: middle;
-}
-.etl-table tr:last-child td { border-bottom: none; }
-.etl-table tr:hover td { background: #0f1724; }
+}}
+.etl-table tr:last-child td {{ border-bottom: none; }}
+.etl-table tr:hover td {{ background: {row_hover}; }}
 
-.td-name {
-    color: #c8d3e8 !important;
-    font-weight: 500;
-    font-size: 14px !important;
-}
-.td-table {
-    color: #2d3a52 !important;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px !important;
-}
-.td-count {
-    color: #4a5568 !important;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 12px !important;
-}
-.td-next {
-    color: #3a4a6b !important;
-    font-family: 'JetBrains Mono', monospace;
-    font-size: 11px !important;
-}
+.c-name  {{ color: {text1}; font-weight: 500; font-size: 14px; }}
+.c-table {{ color: {text4}; font-family: 'JetBrains Mono', monospace; font-size: 11px; }}
+.c-count {{ color: {text2}; font-family: 'JetBrains Mono', monospace; font-size: 12px; }}
+.c-next  {{ color: {text3}; font-family: 'JetBrains Mono', monospace; font-size: 11px; }}
+.c-ok    {{ color: #22c55e; font-weight: 500; }}
+.c-warn  {{ color: #f59e0b; font-weight: 500; }}
+.c-stale {{ color: #ef4444; font-weight: 500; }}
+.c-empty {{ color: {text3}; }}
 
-/* Badges */
-.badge {
+.freq-pill {{
+    font-size: 10px;
+    color: {text3};
+    background: {bg3};
+    border: 1px solid {border};
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+}}
+
+.badge {{
     display: inline-flex;
     align-items: center;
     gap: 5px;
@@ -389,88 +429,31 @@ st.markdown("""
     border-radius: 20px;
     font-size: 11px;
     font-weight: 600;
-    letter-spacing: 0.03em;
-}
-.b-ok    { background: rgba(34,197,94,0.1);  color: #22c55e; border: 1px solid rgba(34,197,94,0.2); }
-.b-warn  { background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.2); }
-.b-stale { background: rgba(239,68,68,0.1);  color: #ef4444; border: 1px solid rgba(239,68,68,0.2); }
-.b-empty { background: rgba(75,85,99,0.1);   color: #4b5563; border: 1px solid rgba(75,85,99,0.2); }
+    white-space: nowrap;
+}}
+.b-ok    {{ background: rgba(34,197,94,0.1);  color: #22c55e; border: 1px solid rgba(34,197,94,0.25); }}
+.b-warn  {{ background: rgba(245,158,11,0.1); color: #f59e0b; border: 1px solid rgba(245,158,11,0.25); }}
+.b-stale {{ background: rgba(239,68,68,0.1);  color: #ef4444; border: 1px solid rgba(239,68,68,0.25); }}
+.b-empty {{ background: rgba(100,116,139,0.1); color: {text3}; border: 1px solid {border}; }}
 
-/* Dot */
-.dot {
-    width: 7px; height: 7px;
-    border-radius: 50%;
-    display: inline-block;
-}
-.dot-ok    { background: #22c55e; box-shadow: 0 0 6px #22c55e; }
-.dot-warn  { background: #f59e0b; box-shadow: 0 0 6px #f59e0b; }
-.dot-stale { background: #ef4444; box-shadow: 0 0 6px #ef4444; }
-.dot-empty { background: #4b5563; }
+.dot {{ width: 6px; height: 6px; border-radius: 50%; display: inline-block; }}
+.dot-ok    {{ background: #22c55e; {'box-shadow: 0 0 5px #22c55e;' if dark else ''} }}
+.dot-warn  {{ background: #f59e0b; {'box-shadow: 0 0 5px #f59e0b;' if dark else ''} }}
+.dot-stale {{ background: #ef4444; {'box-shadow: 0 0 5px #ef4444;' if dark else ''} }}
+.dot-empty {{ background: {text4}; }}
 
-/* Last seen color */
-.last-ok    { color: #22c55e !important; }
-.last-warn  { color: #f59e0b !important; }
-.last-stale { color: #ef4444 !important; }
-.last-empty { color: #4b5563 !important; }
-
-/* Freq pill */
-.freq {
-    font-size: 10px;
-    color: #2d3a52;
-    background: #0f1520;
-    border: 1px solid #151e30;
-    padding: 2px 8px;
-    border-radius: 10px;
-    font-family: 'JetBrains Mono', monospace;
-}
-
-/* Toolbar */
-.toolbar {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-}
-.toolbar-left { font-size: 12px; color: #2d3a52; font-family: 'JetBrains Mono', monospace; }
-
-/* Footer */
-.footer {
+.etl-footer {{
     text-align: center;
     font-size: 11px;
-    color: #1a2235;
-    margin-top: 20px;
+    color: {text4};
+    margin-top: 16px;
     font-family: 'JetBrains Mono', monospace;
-}
+}}
 
-/* Hide streamlit UI */
-#MainMenu, footer, header, .stDeployButton { display: none !important; }
-.block-container { padding-top: 2rem !important; }
+#MainMenu, footer, header, .stDeployButton {{ display: none !important; }}
+div[data-testid="stSelectbox"] > div {{ background: {selectbox_bg} !important; border-color: {border} !important; }}
 </style>
 """, unsafe_allow_html=True)
-
-# ============================================================
-# ЗБІР ДАНИХ
-# ============================================================
-
-@st.cache_data(ttl=120)
-def load_all_data():
-    results = []
-    for task_type, (table, key, icon, label) in TASK_MAP.items():
-        count, last_date = get_stats(table)
-        status = get_status(task_type, last_date) if count is not None else "empty"
-        results.append({
-            "task":      task_type,
-            "icon":      icon,
-            "label":     label,
-            "table":     table,
-            "count":     count,
-            "last_date": last_date,
-            "last_seen": fmt_last(last_date),
-            "next_run":  fmt_next(task_type),
-            "freq":      get_runs_per_day(task_type),
-            "status":    status,
-        })
-    return results
 
 # ============================================================
 # RENDER
@@ -479,123 +462,126 @@ def load_all_data():
 def main():
     now = now_kyiv()
 
-    # Заголовок
-    st.markdown(f"""
-        <div class="hdr">
-            <span class="hdr-title">⚡ ETL Monitor</span>
-            <span class="hdr-version">v2.0</span>
+    # ── Header row
+    col_logo, col_toggle = st.columns([6, 1])
+
+    with col_logo:
+        st.markdown(f"""
+        <div class="etl-header">
+            <div class="etl-logo">
+                <img src="https://udcparts.com/cdn/shop/files/logo.svg?v=1701894617&width=300" alt="UDC">
+                <span class="etl-title">ETL Monitor <span class="etl-version">v2.1</span></span>
+            </div>
         </div>
-        <div class="hdr-sub">Amazon Data Pipeline · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
-    """, unsafe_allow_html=True)
+        <div class="etl-sub">Amazon Data Pipeline · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
+        """, unsafe_allow_html=True)
 
-    # Дані
-    data = load_all_data()
+    with col_toggle:
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        theme_label = "☀️ День" if dark else "🌙 Ніч"
+        if st.button(theme_label, use_container_width=True):
+            st.session_state.dark_mode = not st.session_state.dark_mode
+            st.rerun()
 
-    # Лічильники
+    # ── Дані
+    data = load_all()
+
     ok_n    = sum(1 for r in data if r["status"] == "ok")
     warn_n  = sum(1 for r in data if r["status"] == "warn")
     stale_n = sum(1 for r in data if r["status"] == "stale")
     empty_n = sum(1 for r in data if r["status"] == "empty")
     prob_n  = warn_n + stale_n
 
-    # Метрики
+    # ── Metrics
     st.markdown(f"""
     <div class="metrics-row">
-        <div class="metric ok">
+        <div class="metric m-ok">
             <div class="metric-num">{ok_n}</div>
             <div class="metric-lbl">✅ OK</div>
         </div>
-        <div class="metric warn">
+        <div class="metric m-warn">
             <div class="metric-num">{prob_n}</div>
             <div class="metric-lbl">⚠️ Проблеми</div>
         </div>
-        <div class="metric stale">
+        <div class="metric m-stale">
             <div class="metric-num">{empty_n}</div>
             <div class="metric-lbl">⬜ Порожні</div>
         </div>
-        <div class="metric total">
+        <div class="metric m-total">
             <div class="metric-num">{len(data)}</div>
             <div class="metric-lbl">📋 Всього</div>
         </div>
     </div>
     """, unsafe_allow_html=True)
 
-    # Toolbar
-    col1, col2 = st.columns([4, 1])
-    with col1:
-        filter_opt = st.selectbox(
-            "filter",
-            ["Всі таблиці", "✅ OK", "⚠️ Проблеми", "⬜ Порожні"],
+    # ── Toolbar
+    col_f, col_r = st.columns([5, 1])
+    with col_f:
+        flt = st.selectbox(
+            "f", ["Всі таблиці", "✅ OK", "⚠️ Проблеми", "⬜ Порожні"],
             label_visibility="collapsed"
         )
-    with col2:
+    with col_r:
         if st.button("⟳ Refresh", use_container_width=True):
             st.cache_data.clear()
             st.cache_resource.clear()
             st.rerun()
 
-    # Фільтр
+    # ── Filter + sort
     filtered = data
-    if filter_opt == "✅ OK":
+    if flt == "✅ OK":
         filtered = [r for r in data if r["status"] == "ok"]
-    elif filter_opt == "⚠️ Проблеми":
+    elif flt == "⚠️ Проблеми":
         filtered = [r for r in data if r["status"] in ("warn", "stale")]
-    elif filter_opt == "⬜ Порожні":
+    elif flt == "⬜ Порожні":
         filtered = [r for r in data if r["status"] == "empty"]
 
-    # Сортування — проблемні зверху
     order = {"stale": 0, "warn": 1, "empty": 2, "ok": 3}
     filtered.sort(key=lambda x: order.get(x["status"], 9))
 
-    # Таблиця
-    badge_html = {
+    # ── Build table HTML
+    badge_map = {
         "ok":    '<span class="badge b-ok"><span class="dot dot-ok"></span>OK</span>',
         "warn":  '<span class="badge b-warn"><span class="dot dot-warn"></span>Увага</span>',
         "stale": '<span class="badge b-stale"><span class="dot dot-stale"></span>Застарів</span>',
         "empty": '<span class="badge b-empty"><span class="dot dot-empty"></span>Порожня</span>',
     }
-    last_class = {"ok": "last-ok", "warn": "last-warn", "stale": "last-stale", "empty": "last-empty"}
+    last_cls = {
+        "ok": "c-ok", "warn": "c-warn", "stale": "c-stale", "empty": "c-empty"
+    }
 
-    rows = ""
+    rows_html = ""
     for r in filtered:
-        count_str = f"{r['count']:,}" if r["count"] is not None else "—"
-        badge = badge_html.get(r["status"], "")
-        lc = last_class.get(r["status"], "")
-        rows += f"""
-        <tr>
-            <td class="td-name">{r['icon']} {r['label']}</td>
-            <td class="td-table">{r['table']}</td>
-            <td class="td-count">{count_str}</td>
-            <td class="{lc}">{r['last_seen']}</td>
-            <td class="td-next">{r['next_run']}</td>
-            <td><span class="freq">{r['freq']}</span></td>
+        cnt = f"{r['count']:,}" if r["count"] is not None else "—"
+        badge = badge_map.get(r["status"], "")
+        lc = last_cls.get(r["status"], "c-empty")
+        rows_html += f"""<tr>
+            <td class="c-name">{r['icon']} {r['label']}</td>
+            <td class="c-table">{r['table']}</td>
+            <td class="c-count">{cnt}</td>
+            <td class="{lc}">{r['last_str']}</td>
+            <td class="c-next">{r['next_str']}</td>
+            <td><span class="freq-pill">{r['freq']}</span></td>
             <td>{badge}</td>
-        </tr>
-        """
+        </tr>"""
 
     st.markdown(f"""
     <div class="etl-wrap">
         <table class="etl-table">
-            <thead>
-                <tr>
-                    <th>Модуль</th>
-                    <th>Таблиця</th>
-                    <th>Рядків</th>
-                    <th>Останнє оновлення</th>
-                    <th>Наступний запуск</th>
-                    <th>Частота</th>
-                    <th>Статус</th>
-                </tr>
-            </thead>
-            <tbody>{rows}</tbody>
+            <thead><tr>
+                <th>Модуль</th>
+                <th>Таблиця</th>
+                <th>Рядків</th>
+                <th>Останнє</th>
+                <th>Наступний запуск</th>
+                <th>Частота</th>
+                <th>Статус</th>
+            </tr></thead>
+            <tbody>{rows_html}</tbody>
         </table>
     </div>
-    """, unsafe_allow_html=True)
-
-    # Footer
-    st.markdown(f"""
-    <div class="footer">
-        auto-refresh every 2 min · {len(filtered)} of {len(data)} tables shown · Kyiv TZ
+    <div class="etl-footer">
+        cache 2хв · {len(filtered)}/{len(data)} таблиць · Kyiv TZ · auto-refresh при відкритті
     </div>
     """, unsafe_allow_html=True)
 
