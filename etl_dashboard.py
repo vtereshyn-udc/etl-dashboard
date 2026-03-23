@@ -583,12 +583,21 @@ def render_sidebar():
         <hr class="sb-divider">
         """, unsafe_allow_html=True)
 
-        page = st.radio(
-            "nav",
-            options=["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система", "🤖 AI"],
-            label_visibility="collapsed",
-            key="nav_radio"
-        )
+        if "page" not in st.session_state:
+            st.session_state.page = "📊 Статус"
+
+        pages = ["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система", "🤖 AI"]
+        for p in pages:
+            active = st.session_state.page == p
+            if st.button(
+                p,
+                use_container_width=True,
+                key=f"nav_{p}",
+                type="primary" if active else "secondary"
+            ):
+                st.session_state.page = p
+                st.rerun()
+        page = st.session_state.page
 
         st.markdown("<hr class='sb-divider'>", unsafe_allow_html=True)
 
@@ -1285,7 +1294,8 @@ def page_ai():
 # ============================================================
 
 def main():
-    page = render_sidebar()
+    render_sidebar()
+    page = st.session_state.get("page", "📊 Статус")
     data = load_all()
 
     if page == "📊 Статус":
