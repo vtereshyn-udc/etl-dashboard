@@ -259,7 +259,7 @@ dark = st.session_state.dark_mode
 if dark:
     bg, bg2, bg3 = "#080b12", "#0d1220", "#0f1520"
     border, border2 = "#151e30", "#1a2a40"
-    text1, text2, text3, text4 = "#ffffff", "#b0bac8", "#4a5a7b", "#3a4a6b"
+    text1, text2, text3, text4 = "#ffffff", "#b0bac8", "#6b7e9f", "#4a5a7b"
     row_hover, th_bg = "#0f1724", "#080b12"
     sel_bg = "#0d1220"
 else:
