@@ -305,14 +305,14 @@ st.markdown(f"""
 .etl-table tr:last-child td {{ border-bottom:none; }}
 .etl-table tr:hover td {{ background:{row_hover}; }}
 
-.c-name {{ color:{text1}; font-weight:500; font-size:14px; }}
-.c-tbl  {{ color:{text4}; font-family:'JetBrains Mono',monospace; font-size:11px; }}
+.c-name {{ color:{text1}; font-weight:600; font-size:14px; }}
+.c-tbl  {{ color:#7ec8a0; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:500; }}
 .c-cnt  {{ color:{text2}; font-family:'JetBrains Mono',monospace; font-size:12px; }}
-.c-nxt  {{ color:{text3}; font-family:'JetBrains Mono',monospace; font-size:11px; }}
+.c-nxt  {{ color:#5a7a9e; font-family:'JetBrains Mono',monospace; font-size:11px; }}
 .c-ok   {{ color:#22c55e; font-weight:500; }}
 .c-warn {{ color:#f59e0b; font-weight:500; }}
 .c-stale{{ color:#ef4444; font-weight:500; }}
-.c-empty{{ color:{text3}; }}
+.c-empty{{ color:#4a5a7b; }}
 
 .freq-pill {{ font-size:10px; color:{text3}; background:{bg3}; border:1px solid {border}; padding:2px 8px; border-radius:10px; font-family:'JetBrains Mono',monospace; white-space:nowrap; }}
 
