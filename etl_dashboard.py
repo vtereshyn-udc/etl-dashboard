@@ -626,10 +626,13 @@ def render_sidebar():
             st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
 
-        # Статус системи в sidebar
-        data = load_all()
-        ok_n = sum(1 for r in data if r["status"] == "ok")
-        prob_n = sum(1 for r in data if r["status"] in ("warn", "stale"))
+        # Статус системи в sidebar — легкий підрахунок без load_all
+        try:
+            etl = load_etl_log()
+            ok_n = sum(1 for v in etl.values() if v.get("status") == "ok")
+            prob_n = sum(1 for v in etl.values() if v.get("status") == "error")
+        except:
+            ok_n, prob_n = 0, 0
         st.markdown(f"""
         <hr class="sb-divider">
         <div class="nav-section">Система</div>
@@ -1322,8 +1325,6 @@ def main():
         st.session_state.page = "📊 Статус"
     render_sidebar()
     page = st.session_state.page
-    data = load_all()
-
     if page == "📊 Статус":
         page_status(data)
     elif page == "📈 Аналітика":
