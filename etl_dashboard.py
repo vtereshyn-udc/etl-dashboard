@@ -1299,16 +1299,25 @@ def page_ai():
                         "parts": [{"text": user_input}]
                     })
 
+                # Додаємо системний промпт як перше user повідомлення
+                if len(contents) == 1:
+                    contents = [{"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\n\n" + contents[0]["parts"][0]["text"]}]}]
+                else:
+                    contents[0]["parts"][0]["text"] = SYSTEM_PROMPT + "\n\nКонтекст надано вище.\n\n" + contents[0]["parts"][0]["text"]
+
                 resp = req.post(
                     f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}",
-                    json={"contents": contents, "systemInstruction": {"parts": [{"text": SYSTEM_PROMPT}]}},
+                    json={"contents": contents},
                     timeout=30
                 )
 
                 if resp.status_code == 200:
-                    answer = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                    data_resp = resp.json()
+                    answer = data_resp["candidates"][0]["content"]["parts"][0]["text"]
+                elif resp.status_code == 400:
+                    answer = f"❌ Помилка запиту: {resp.json().get('error',{}).get('message','')}"
                 else:
-                    answer = f"❌ Помилка API: {resp.status_code} — {resp.text[:200]}"
+                    answer = f"❌ API помилка {resp.status_code}: {resp.text[:300]}"
 
             except Exception as e:
                 answer = f"❌ Помилка: {e}"
