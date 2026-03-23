@@ -1192,7 +1192,7 @@ def page_ai():
         st.session_state.ai_messages = []
 
     gemini_key   = st.secrets.get("GEMINI_API_KEY", "")
-    gemini_model = st.secrets.get("GEMINI_MODEL", "gemini-2.5-flash")
+    gemini_model = st.secrets.get("GEMINI_MODEL", "gemini-1.5-flash-latest")
 
     if not gemini_key:
         st.warning("⚠️ GEMINI_API_KEY не знайдено в secrets")
@@ -1231,9 +1231,8 @@ def page_ai():
     ]
     for col, q in zip([quick_col1, quick_col2, quick_col3, quick_col4], quick_questions):
         with col:
-            if st.button(q, use_container_width=True):
-                st.session_state.ai_messages.append({"role": "user", "content": q})
-                st.rerun()
+            if st.button(q, use_container_width=True, key=f"quick_{q[:10]}"):
+                st.session_state["ai_pending"] = q
     st.markdown('</div>', unsafe_allow_html=True)
 
     # Історія чату
@@ -1269,9 +1268,16 @@ def page_ai():
                 del st.session_state["ai_input"]
             st.rerun()
 
-    # Обробка запиту
+    # Обробка pending (швидкі кнопки)
+    if "ai_pending" in st.session_state and st.session_state["ai_pending"]:
+        pending = st.session_state.pop("ai_pending")
+        st.session_state.ai_messages.append({"role": "user", "content": pending})
+
+    # Обробка запиту з інпуту
     if (send or user_input) and user_input:
         st.session_state.ai_messages.append({"role": "user", "content": user_input})
+        if "ai_input" in st.session_state:
+            del st.session_state["ai_input"]
 
         with st.spinner("🤖 Думаю..."):
             try:
@@ -1306,7 +1312,7 @@ def page_ai():
                     contents[0]["parts"][0]["text"] = SYSTEM_PROMPT + "\n\nКонтекст надано вище.\n\n" + contents[0]["parts"][0]["text"]
 
                 resp = req.post(
-                    f"https://generativelanguage.googleapis.com/v1beta/models/{gemini_model}:generateContent?key={gemini_key}",
+                    f"https://generativelanguage.googleapis.com/v1/models/{gemini_model}:generateContent?key={gemini_key}",
                     json={"contents": contents},
                     timeout=30
                 )
