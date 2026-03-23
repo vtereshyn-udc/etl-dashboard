@@ -1326,7 +1326,7 @@ def main():
     render_sidebar()
     page = st.session_state.page
     if page == "📊 Статус":
-        page_status(data)
+        page_status(load_all())
     elif page == "📈 Аналітика":
         page_analytics()
     elif page == "🗄️ База даних":
