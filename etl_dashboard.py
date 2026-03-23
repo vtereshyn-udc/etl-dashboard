@@ -199,8 +199,8 @@ CUSTOM_THRESHOLDS = {
     "manage_fba":       (28, 52),
     "awd_inventory":    (28, 52),
     "rank_tracker":     (28, 52),
-    "ledger_summary":   (28, 52),
-    "ledger_detail":    (28, 52),
+    "ledger_summary":   (36, 72),
+    "ledger_detail":    (36, 72),
     "bulk_daily":       (28, 52),
     "shipments":        (36, 72),
     "fba_replacements": (36, 72),
@@ -244,9 +244,48 @@ def fmt_last(last_date):
 # LOAD DATA
 # ============================================================
 
+
+@st.cache_data(ttl=120)
+def load_etl_log():
+    """Читає останній запуск кожного task з etl_log"""
+    r = query("""
+        SELECT DISTINCT ON (task_type)
+            task_type, ran_at, rows_saved, elapsed_sec, status
+        FROM public.etl_log
+        ORDER BY task_type, ran_at DESC
+    """)
+    if not r:
+        return {}
+    log = {}
+    for task_type, ran_at, rows_saved, elapsed_sec, status in r:
+        log[task_type] = {
+            "ran_at": ran_at,
+            "rows_saved": rows_saved,
+            "elapsed_sec": elapsed_sec,
+            "status": status,
+        }
+    return log
+
+
+def fmt_ran_at(ran_at):
+    if not ran_at:
+        return "—"
+    now = datetime.now()
+    ran = ran_at.replace(tzinfo=None) if hasattr(ran_at, 'tzinfo') and ran_at.tzinfo else ran_at
+    diff = (now - ran).total_seconds()
+    if diff < 60:
+        return f"{int(diff)}с тому"
+    elif diff < 3600:
+        return f"{int(diff/60)}хв тому"
+    elif diff < 86400:
+        return f"{int(diff/3600)}г тому"
+    else:
+        return f"{int(diff/86400)}д тому"
+
 @st.cache_data(ttl=120)
 def load_all():
     rows = []
+    etl_log = load_etl_log()
     for task_type, schema_table, date_col, icon, label in TASK_MAP:
         count, last_date = get_stats(schema_table, date_col)
         status = get_status(task_type, last_date) if count is not None else "empty"
@@ -260,6 +299,8 @@ def load_all():
             "next_str":  fmt_next(task_type),
             "freq":      get_runs_per_day(task_type),
             "status":    status,
+            "ran_at":    fmt_ran_at(etl_log.get(task_type, {}).get("ran_at")),
+            "rows_run":  etl_log.get(task_type, {}).get("rows_saved") or 0,
         })
     return rows
 
@@ -324,6 +365,7 @@ st.markdown(f"""
 .c-name {{ color:{text1}; font-weight:600; font-size:14px; }}
 .c-tbl  {{ color:#7ec8a0; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:500; }}
 .c-cnt  {{ color:{text2}; font-family:'JetBrains Mono',monospace; font-size:12px; }}
+.c-ran  {{ color:#4a9e6b; font-family:'JetBrains Mono',monospace; font-size:11px; }}
 .c-nxt  {{ color:#5a7a9e; font-family:'JetBrains Mono',monospace; font-size:11px; }}
 .c-ok   {{ color:#22c55e; font-weight:500; }}
 .c-warn {{ color:#f59e0b; font-weight:500; }}
@@ -426,6 +468,7 @@ def main():
             <td class="c-tbl">{r['table']}</td>
             <td class="c-cnt">{cnt}</td>
             <td class="{lc}">{r['last_str']}</td>
+            <td class="c-ran">{r['ran_at']}</td>
             <td class="c-nxt">{r['next_str']}</td>
             <td><span class="freq-pill">{r['freq']}</span></td>
             <td>{badge}</td>
@@ -436,7 +479,7 @@ def main():
         <table class="etl-table">
             <thead><tr>
                 <th>Модуль</th><th>Таблиця</th><th>Рядків</th>
-                <th>Останнє</th><th>Наступний запуск</th><th>Частота</th><th>Статус</th>
+                <th>Останнє</th><th>Запущено</th><th>Наступний</th><th>Частота</th><th>Статус</th>
             </tr></thead>
             <tbody>{rows_html}</tbody>
         </table>
