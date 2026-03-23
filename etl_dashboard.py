@@ -115,7 +115,7 @@ if dark:
 else:
     bg, bg2, bg3 = "#f4f6fb", "#ffffff", "#f8f9fc"
     border = "#e2e8f0"
-    text1, text2, text3, text4 = "#0f172a", "#475569", "#1e293b", "#94a3b8"
+    text1, text2, text3, text4 = "#0f172a", "#334155", "#0f172a", "#64748b"
     row_hover, th_bg = "#f1f5f9", "#f8f9fc"
     sb_bg = "#f0f2f8"
 
@@ -1236,14 +1236,18 @@ def page_ai():
     # Інпут
     col_inp, col_send, col_clear = st.columns([7, 1, 1])
     with col_inp:
-        user_input = st.chat_input("Запитай про систему...")
+        user_input = st.text_input("q", placeholder="Запитай про систему...", label_visibility="collapsed", key="ai_input")
+    with col_send:
+        send = st.button("▶", use_container_width=True)
     with col_clear:
-        if st.button("🗑️", help="Очистити чат"):
+        if st.button("🗑️", use_container_width=True):
             st.session_state.ai_messages = []
+            if "ai_input" in st.session_state:
+                del st.session_state["ai_input"]
             st.rerun()
 
     # Обробка запиту
-    if user_input:
+    if (send or user_input) and user_input:
         st.session_state.ai_messages.append({"role": "user", "content": user_input})
 
         with st.spinner("🤖 Думаю..."):
