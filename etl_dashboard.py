@@ -194,17 +194,33 @@ def hours_since(last_date):
         last_dt = last_date.replace(tzinfo=None) if hasattr(last_date, 'tzinfo') and last_date.tzinfo else last_date
     return (now - last_dt).total_seconds() / 3600
 
+CUSTOM_THRESHOLDS = {
+    "inventory":        (28, 52),
+    "manage_fba":       (28, 52),
+    "awd_inventory":    (28, 52),
+    "rank_tracker":     (28, 52),
+    "ledger_summary":   (28, 52),
+    "ledger_detail":    (28, 52),
+    "bulk_daily":       (28, 52),
+    "shipments":        (36, 72),
+    "fba_replacements": (36, 72),
+}
+
 def get_status(task_type, last_date):
-    runs = sum(1 for _, _, t, _ in SCHEDULE if t == task_type)
-    if not runs:
-        return "unknown"
-    expected_h = (24 / runs) * 1.5
     h = hours_since(last_date)
     if h is None:
         return "empty"
-    if h <= expected_h:
+    if task_type in CUSTOM_THRESHOLDS:
+        ok_h, warn_h = CUSTOM_THRESHOLDS[task_type]
+    else:
+        runs = sum(1 for _, _, t, _ in SCHEDULE if t == task_type)
+        if not runs:
+            return "unknown"
+        ok_h = (24 / runs) * 1.5
+        warn_h = ok_h * 2.5
+    if h <= ok_h:
         return "ok"
-    elif h <= expected_h * 2.5:
+    elif h <= warn_h:
         return "warn"
     else:
         return "stale"
