@@ -130,9 +130,9 @@ st.markdown(f"""
 .block-container {{ padding-top:1.5rem !important; max-width:1300px; }}
 
 /* Sidebar buttons */
-[data-testid="stSidebar"] .stButton > button {
+[data-testid="stSidebar"] .stButton > button {{
     background: transparent !important;
-    border: 1px solid var(--color-border-secondary) !important;
+    border: 1px solid rgba(0,0,0,.15) !important;
     color: inherit !important;
     text-align: left !important;
     font-size: 13px !important;
@@ -140,17 +140,17 @@ st.markdown(f"""
     padding: 8px 12px !important;
     border-radius: 8px !important;
     transition: all .15s !important;
-}
-[data-testid="stSidebar"] .stButton > button:hover {
+}}
+[data-testid="stSidebar"] .stButton > button:hover {{
     border-color: #3b82f6 !important;
     color: #3b82f6 !important;
-}
-[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+}}
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {{
     background: rgba(59,130,246,.15) !important;
     border-color: #3b82f6 !important;
     color: #3b82f6 !important;
     font-weight: 700 !important;
-}
+}}
 
 /* Sidebar */
 [data-testid="stSidebar"] {{
