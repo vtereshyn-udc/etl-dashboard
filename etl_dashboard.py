@@ -606,9 +606,6 @@ def render_sidebar():
         <hr class="sb-divider">
         """, unsafe_allow_html=True)
 
-        if "page" not in st.session_state:
-            st.session_state.page = "📊 Статус"
-
         pages = ["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система", "🤖 AI"]
         for p in pages:
             active = st.session_state.page == p
@@ -1321,8 +1318,10 @@ def page_ai():
 # ============================================================
 
 def main():
+    if "page" not in st.session_state:
+        st.session_state.page = "📊 Статус"
     render_sidebar()
-    page = st.session_state.get("page", "📊 Статус")
+    page = st.session_state.page
     data = load_all()
 
     if page == "📊 Статус":
