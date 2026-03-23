@@ -1009,14 +1009,17 @@ def page_database():
                     break
 
         # Остання активність
-        if last:
-            last_naive = last.replace(tzinfo=None) if hasattr(last, "tzinfo") and last.tzinfo else last
-            h_ago = (datetime.now() - last_naive).total_seconds() / 3600
-            last_str = f"{int(h_ago)}г тому" if h_ago < 48 else f"{int(h_ago/24)}д тому"
-            last_color = "#22c55e" if h_ago < 25 else "#f59e0b" if h_ago < 72 else text4
-        else:
-            last_str = "—"
-            last_color = text4
+        last_str = "—"
+        last_color = text4
+        try:
+            if last:
+                last_naive = last.replace(tzinfo=None) if hasattr(last, "tzinfo") and last.tzinfo else last
+                h_ago = (datetime.now() - last_naive).total_seconds() / 3600
+                if h_ago is not None and h_ago >= 0:
+                    last_str = f"{int(h_ago)}г тому" if h_ago < 48 else f"{int(h_ago/24)}д тому"
+                    last_color = "#22c55e" if h_ago < 25 else "#f59e0b" if h_ago < 72 else text4
+        except Exception:
+            pass
 
         rows_html += f"""<tr>
             <td style="padding:10px 12px">
