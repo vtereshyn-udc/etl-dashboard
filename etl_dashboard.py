@@ -129,6 +129,29 @@ st.markdown(f"""
 .stApp {{ background:{bg} !important; font-family:'Inter',sans-serif; }}
 .block-container {{ padding-top:1.5rem !important; max-width:1300px; }}
 
+/* Sidebar buttons */
+[data-testid="stSidebar"] .stButton > button {
+    background: transparent !important;
+    border: 1px solid var(--color-border-secondary) !important;
+    color: inherit !important;
+    text-align: left !important;
+    font-size: 13px !important;
+    font-weight: 500 !important;
+    padding: 8px 12px !important;
+    border-radius: 8px !important;
+    transition: all .15s !important;
+}
+[data-testid="stSidebar"] .stButton > button:hover {
+    border-color: #3b82f6 !important;
+    color: #3b82f6 !important;
+}
+[data-testid="stSidebar"] .stButton > button[kind="primary"] {
+    background: rgba(59,130,246,.15) !important;
+    border-color: #3b82f6 !important;
+    color: #3b82f6 !important;
+    font-weight: 700 !important;
+}
+
 /* Sidebar */
 [data-testid="stSidebar"] {{
     background:{sb_bg} !important;
