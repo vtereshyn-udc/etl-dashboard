@@ -1331,7 +1331,11 @@ def main():
         page_analytics()
     elif page == "🗄️ База даних":
         page_database()
-    else:
+    elif page == "🖥️ Система":
         page_system()
+    elif page == "🤖 AI":
+        page_ai()
+    else:
+        page_status(load_all())
 
 main()
