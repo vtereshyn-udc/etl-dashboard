@@ -463,6 +463,56 @@ def gauge_html(value, max_val, color, label, unit="%"):
     </div>"""
 
 
+
+@st.cache_data(ttl=300)
+def load_db_overview():
+    """Повна інформація по всіх таблицях БД"""
+    r = query("""
+        SELECT
+            t.table_schema                                          as schema,
+            t.table_name                                            as table_name,
+            t.table_schema || '.' || t.table_name                  as full_name,
+            COALESCE(s.n_live_tup, 0)                              as row_count,
+            COALESCE(
+                pg_total_relation_size(
+                    quote_ident(t.table_schema)||'.'||quote_ident(t.table_name)
+                ) / 1024.0 / 1024.0, 0
+            )                                                       as size_mb,
+            greatest(s.last_vacuum, s.last_autovacuum,
+                     s.last_analyze, s.last_autoanalyze)            as last_activity
+        FROM information_schema.tables t
+        LEFT JOIN pg_stat_user_tables s
+            ON s.schemaname = t.table_schema AND s.relname = t.table_name
+        WHERE t.table_schema NOT IN (
+            'pg_catalog','information_schema','pg_toast','heroku_ext'
+        )
+        AND t.table_type = 'BASE TABLE'
+        ORDER BY size_mb DESC
+    """)
+    if not r:
+        return pd.DataFrame()
+    df = pd.DataFrame(r, columns=["schema","table","full_name","row_count","size_mb","last_activity"])
+    df["size_mb"]   = pd.to_numeric(df["size_mb"],   errors="coerce").fillna(0).round(2)
+    df["row_count"] = pd.to_numeric(df["row_count"],  errors="coerce").fillna(0).astype(int)
+    return df
+
+
+@st.cache_data(ttl=300)
+def load_growth_per_day():
+    """Ріст рядків за останні 7 днів з etl_log"""
+    r = query("""
+        SELECT task_type,
+               ROUND(SUM(rows_saved) / 7.0, 0) as rows_per_day
+        FROM public.etl_log
+        WHERE ran_at >= NOW() - INTERVAL '7 days'
+          AND status = 'ok'
+          AND rows_saved > 0
+        GROUP BY task_type
+    """)
+    if not r:
+        return {}
+    return {row[0]: int(row[1]) for row in r}
+
 # ============================================================
 # SIDEBAR
 # ============================================================
@@ -481,7 +531,7 @@ def render_sidebar():
 
         page = st.radio(
             "nav",
-            options=["📊 Статус", "📈 Аналітика", "🖥️ Система"],
+            options=["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система"],
             label_visibility="collapsed",
             key="nav_radio"
         )
@@ -852,6 +902,192 @@ def page_system():
     st.markdown(f'<div class="etl-footer">оновлення 30с · system_monitor.py · Kyiv TZ</div>', unsafe_allow_html=True)
 
 
+
+def page_database():
+    now = now_kyiv()
+    st.markdown(f"""
+    <div class="page-header">
+        <div class="page-title">🗄️ База даних</div>
+        <div class="page-sub">Таблиці · Розміри · Ріст · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    df = load_db_overview()
+    growth = load_growth_per_day()
+
+    if df.empty:
+        st.warning("Немає даних")
+        return
+
+    # ── Метрики зверху
+    total_size = df["size_mb"].sum()
+    total_rows = df["row_count"].sum()
+    total_tables = len(df)
+    schemas = df["schema"].nunique()
+
+    st.markdown(f"""
+    <div class="metrics-row">
+        <div class="metric m-total">
+            <div class="metric-num">{total_size/1024:.1f}</div>
+            <div class="metric-lbl">GB розмір БД</div>
+        </div>
+        <div class="metric m-ok">
+            <div class="metric-num">{total_rows/1_000_000:.1f}M</div>
+            <div class="metric-lbl">Всього рядків</div>
+        </div>
+        <div class="metric m-warn">
+            <div class="metric-num">{total_tables}</div>
+            <div class="metric-lbl">Таблиць</div>
+        </div>
+        <div class="metric m-stale">
+            <div class="metric-num">{schemas}</div>
+            <div class="metric-lbl">Схем</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # ── Фільтри
+    col_s, col_f, col_r = st.columns([2, 3, 1])
+    with col_s:
+        all_schemas = ["Всі"] + sorted(df["schema"].unique().tolist())
+        schema_filter = st.selectbox("Схема", all_schemas, label_visibility="collapsed")
+    with col_f:
+        search = st.text_input("Пошук", placeholder="Назва таблиці...", label_visibility="collapsed")
+    with col_r:
+        if st.button("⟳ Refresh", use_container_width=True):
+            st.cache_data.clear()
+            st.rerun()
+
+    # Фільтрація
+    filtered = df.copy()
+    if schema_filter != "Всі":
+        filtered = filtered[filtered["schema"] == schema_filter]
+    if search:
+        filtered = filtered[filtered["table"].str.contains(search, case=False, na=False)]
+
+    # ── Таблиця
+    max_size = filtered["size_mb"].max() or 1
+
+    # Кольори схем
+    schema_colors = {
+        "csv":      "#3b82f6",
+        "spapi":    "#8b5cf6",
+        "api_ad":   "#f59e0b",
+        "amzudc":   "#22c55e",
+        "public":   "#6b7280",
+        "upload":   "#06b6d4",
+        "products": "#ec4899",
+        "finance":  "#10b981",
+        "pbi":      "#f97316",
+    }
+
+    rows_html = ""
+    for _, row in filtered.iterrows():
+        schema = row["schema"]
+        table  = row["table"]
+        size   = row["size_mb"]
+        rows   = row["row_count"]
+        last   = row["last_activity"]
+
+        # Бар розміру
+        bar_w = max(2, int(size / max_size * 160))
+        bar_color = "#22c55e" if size < 50 else "#f59e0b" if size < 200 else "#ef4444"
+
+        # Схема badge
+        sc_color = schema_colors.get(schema, "#6b7280")
+
+        # Кількість рядків
+        rows_str = f"{rows/1_000_000:.1f}M" if rows >= 1_000_000 else f"{rows/1000:.0f}K" if rows >= 1000 else str(rows)
+
+        # Ріст — шукаємо по task_type що відповідає таблиці
+        growth_str = "—"
+        for task_type, rpd in growth.items():
+            # Знаходимо відповідний TASK_MAP запис
+            for t, sch_tbl, _, _, _ in TASK_MAP:
+                if t == task_type and sch_tbl == f"{schema}.{table}":
+                    growth_str = f"+{rpd:,}/д" if rpd > 0 else "—"
+                    break
+
+        # Остання активність
+        if last:
+            last_naive = last.replace(tzinfo=None) if hasattr(last, "tzinfo") and last.tzinfo else last
+            h_ago = (datetime.now() - last_naive).total_seconds() / 3600
+            last_str = f"{int(h_ago)}г тому" if h_ago < 48 else f"{int(h_ago/24)}д тому"
+            last_color = "#22c55e" if h_ago < 25 else "#f59e0b" if h_ago < 72 else text4
+        else:
+            last_str = "—"
+            last_color = text4
+
+        rows_html += f"""<tr>
+            <td style="padding:10px 12px">
+                <span style="background:{sc_color}22;color:{sc_color};border:1px solid {sc_color}44;
+                    font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;
+                    font-family:JetBrains Mono,monospace;letter-spacing:.05em">{schema}</span>
+            </td>
+            <td style="padding:10px 12px;color:{text1};font-weight:500;font-size:13px;font-family:JetBrains Mono,monospace">{table}</td>
+            <td style="padding:10px 12px">
+                <div style="display:flex;align-items:center;gap:8px">
+                    <div style="width:{bar_w}px;height:6px;background:{bar_color};border-radius:3px;opacity:.85;min-width:2px"></div>
+                    <span style="color:{text1};font-size:12px;font-family:JetBrains Mono,monospace;white-space:nowrap">{size:.1f} MB</span>
+                </div>
+            </td>
+            <td style="padding:10px 12px;color:{text2};font-size:12px;font-family:JetBrains Mono,monospace">{rows_str}</td>
+            <td style="padding:10px 12px;color:#4a9e6b;font-size:12px;font-family:JetBrains Mono,monospace">{growth_str}</td>
+            <td style="padding:10px 12px;color:{last_color};font-size:11px;font-family:JetBrains Mono,monospace">{last_str}</td>
+        </tr>"""
+
+    st.markdown(f"""
+    <div class="etl-wrap">
+        <table class="etl-table">
+            <thead><tr>
+                <th>Схема</th>
+                <th>Таблиця</th>
+                <th>Розмір</th>
+                <th>Рядків</th>
+                <th>Ріст/день</th>
+                <th>Оновлення</th>
+            </tr></thead>
+            <tbody>{rows_html}</tbody>
+        </table>
+    </div>
+    <div class="etl-footer">cache 5хв · {len(filtered)}/{len(df)} таблиць · Kyiv TZ</div>
+    """, unsafe_allow_html=True)
+
+    # ── Розбивка по схемах
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.markdown(f'<div class="stat-card"><h4>📊 Розбивка по схемах</h4>', unsafe_allow_html=True)
+
+    schema_stats = df.groupby("schema").agg(
+        tables=("table","count"),
+        size_mb=("size_mb","sum"),
+        rows=("row_count","sum")
+    ).sort_values("size_mb", ascending=False).reset_index()
+
+    max_schema_size = schema_stats["size_mb"].max() or 1
+    schema_html = ""
+    for _, row in schema_stats.iterrows():
+        sc = row["schema"]
+        sc_color = schema_colors.get(sc, "#6b7280")
+        bar_w = max(2, int(row["size_mb"] / max_schema_size * 200))
+        rows_k = f"{row['rows']/1_000_000:.1f}M" if row["rows"] >= 1_000_000 else f"{row['rows']/1000:.0f}K"
+        schema_html += f"""
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+            <div style="min-width:90px">
+                <span style="background:{sc_color}22;color:{sc_color};border:1px solid {sc_color}44;
+                    font-size:11px;font-weight:700;padding:3px 10px;border-radius:4px;
+                    font-family:JetBrains Mono,monospace">{sc}</span>
+            </div>
+            <div style="flex:1;height:8px;background:{"#1a2235" if dark else "#e2e8f0"};border-radius:4px;overflow:hidden">
+                <div style="width:{bar_w}px;height:100%;background:{sc_color};border-radius:4px;opacity:.8"></div>
+            </div>
+            <div style="min-width:70px;text-align:right;color:{text1};font-size:12px;font-family:JetBrains Mono,monospace">{row["size_mb"]:.1f} MB</div>
+            <div style="min-width:60px;color:{text4};font-size:11px;font-family:JetBrains Mono,monospace">{rows_k} рядків</div>
+            <div style="min-width:50px;color:{text4};font-size:11px;font-family:JetBrains Mono,monospace">{int(row["tables"])} табл</div>
+        </div>"""
+
+    st.markdown(schema_html, unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
 # ============================================================
 # MAIN
 # ============================================================
@@ -864,6 +1100,8 @@ def main():
         page_status(data)
     elif page == "📈 Аналітика":
         page_analytics()
+    elif page == "🗄️ База даних":
+        page_database()
     else:
         page_system()
 
