@@ -141,7 +141,7 @@ st.markdown(f"""
 .sb-logo {{ padding:16px 16px 8px; }}
 .sb-logo img {{ height:26px; filter:{'brightness(0) invert(1)' if dark else 'none'}; opacity:.8; }}
 .sb-title {{ font-size:13px; font-weight:700; color:{text1} !important; margin-top:6px; letter-spacing:-.2px; }}
-.sb-sub {{ font-size:10px; color:{text4} !important; font-family:'JetBrains Mono',monospace; margin-top:2px; }}
+.sb-sub {{ font-size:10px; color:{text4} !important; font-family:JetBrains Mono,monospace; margin-top:2px; }}
 .sb-divider {{ border:none; border-top:1px solid {border}; margin:12px 0; }}
 
 .nav-item {{
@@ -162,7 +162,7 @@ st.markdown(f"""
 /* Header */
 .page-header {{ margin-bottom:20px; }}
 .page-title {{ font-size:22px; font-weight:700; color:{text1}; letter-spacing:-.3px; }}
-.page-sub {{ font-size:12px; color:{text4}; font-family:'JetBrains Mono',monospace; margin-top:2px; }}
+.page-sub {{ font-size:12px; color:{text4}; font-family:JetBrains Mono,monospace; margin-top:2px; }}
 
 /* Metrics */
 .metrics-row {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }}
@@ -170,7 +170,7 @@ st.markdown(f"""
 .metric::after {{ content:''; position:absolute; top:0; left:0; right:0; height:2px; }}
 .m-ok::after {{ background:#22c55e; }} .m-warn::after {{ background:#f59e0b; }}
 .m-stale::after {{ background:#ef4444; }} .m-total::after {{ background:#3b82f6; }}
-.metric-num {{ font-size:36px; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1; }}
+.metric-num {{ font-size:36px; font-weight:700; font-family:JetBrains Mono,monospace; line-height:1; }}
 .m-ok .metric-num {{ color:#22c55e; }} .m-warn .metric-num {{ color:#f59e0b; }}
 .m-stale .metric-num {{ color:#ef4444; }} .m-total .metric-num {{ color:#3b82f6; }}
 .metric-lbl {{ font-size:10px; color:{text4}; text-transform:uppercase; letter-spacing:.1em; margin-top:4px; font-weight:600; }}
@@ -183,13 +183,13 @@ st.markdown(f"""
 .etl-table tr:last-child td {{ border-bottom:none; }}
 .etl-table tr:hover td {{ background:{row_hover}; }}
 .c-name {{ color:{text1}; font-weight:600; font-size:14px; }}
-.c-tbl  {{ color:#7ec8a0; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:500; }}
-.c-cnt  {{ color:{text2}; font-family:'JetBrains Mono',monospace; font-size:12px; }}
-.c-ran  {{ color:#4a9e6b; font-family:'JetBrains Mono',monospace; font-size:11px; }}
-.c-nxt  {{ color:#5a7a9e; font-family:'JetBrains Mono',monospace; font-size:11px; }}
+.c-tbl  {{ color:#7ec8a0; font-family:JetBrains Mono,monospace; font-size:12px; font-weight:500; }}
+.c-cnt  {{ color:{text2}; font-family:JetBrains Mono,monospace; font-size:12px; }}
+.c-ran  {{ color:#4a9e6b; font-family:JetBrains Mono,monospace; font-size:11px; }}
+.c-nxt  {{ color:#5a7a9e; font-family:JetBrains Mono,monospace; font-size:11px; }}
 .c-ok {{ color:#22c55e; font-weight:500; }} .c-warn {{ color:#f59e0b; font-weight:500; }}
 .c-stale {{ color:#ef4444; font-weight:500; }} .c-empty {{ color:{text4}; }}
-.freq-pill {{ font-size:10px; color:{text4}; background:{bg3}; border:1px solid {border}; padding:2px 8px; border-radius:10px; font-family:'JetBrains Mono',monospace; white-space:nowrap; }}
+.freq-pill {{ font-size:10px; color:{text4}; background:{bg3}; border:1px solid {border}; padding:2px 8px; border-radius:10px; font-family:JetBrains Mono,monospace; white-space:nowrap; }}
 .badge {{ display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }}
 .b-ok {{ background:rgba(34,197,94,.1); color:#22c55e; border:1px solid rgba(34,197,94,.25); }}
 .b-warn {{ background:rgba(245,158,11,.1); color:#f59e0b; border:1px solid rgba(245,158,11,.25); }}
@@ -206,22 +206,22 @@ st.markdown(f"""
 .stat-card h4 {{ font-size:11px; color:{text4}; text-transform:uppercase; letter-spacing:.1em; margin:0 0 14px; font-weight:700; }}
 .alert-row {{ background:rgba(239,68,68,.07); border:1px solid rgba(239,68,68,.2); border-radius:8px; padding:10px 14px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }}
 .alert-name {{ color:#ef4444; font-weight:600; font-size:13px; }}
-.alert-info {{ color:{text2}; font-size:11px; font-family:'JetBrains Mono',monospace; }}
+.alert-info {{ color:{text2}; font-size:11px; font-family:JetBrains Mono,monospace; }}
 
 /* Uptime bars */
 .uptime-row {{ display:flex; align-items:center; gap:12px; margin-bottom:8px; }}
-.uptime-label {{ color:{text2}; font-size:12px; font-family:'JetBrains Mono',monospace; min-width:130px; }}
+.uptime-label {{ color:{text2}; font-size:12px; font-family:JetBrains Mono,monospace; min-width:130px; }}
 .uptime-bar-wrap {{ flex:1; height:8px; background:{"#1a2235" if dark else "#e2e8f0"}; border-radius:4px; overflow:hidden; }}
-.uptime-pct {{ font-size:12px; font-weight:600; min-width:44px; text-align:right; font-family:'JetBrains Mono',monospace; }}
+.uptime-pct {{ font-size:12px; font-weight:600; min-width:44px; text-align:right; font-family:JetBrains Mono,monospace; }}
 
 /* Heatmap */
 .hm-wrap {{ overflow-x:auto; padding-bottom:4px; }}
-.hm-table {{ border-collapse:separate; border-spacing:2px; font-size:11px; font-family:'JetBrains Mono',monospace; }}
+.hm-table {{ border-collapse:separate; border-spacing:2px; font-size:11px; font-family:JetBrains Mono,monospace; }}
 .hm-table td.cell {{ width:16px; height:16px; border-radius:3px; }}
 .hm-label {{ color:{text2}; padding-right:10px; text-align:right; white-space:nowrap; font-size:11px; min-width:110px; }}
 .hm-date-label {{ color:{text4}; font-size:10px; padding:0 2px; text-align:left; }}
 
-.etl-footer {{ text-align:center; font-size:11px; color:{text4}; margin-top:16px; font-family:'JetBrains Mono',monospace; }}
+.etl-footer {{ text-align:center; font-size:11px; color:{text4}; margin-top:16px; font-family:JetBrains Mono,monospace; }}
 #MainMenu,footer,header,.stDeployButton {{ display:none !important; }}
 </style>
 """, unsafe_allow_html=True)
@@ -455,7 +455,7 @@ def gauge_html(value, max_val, color, label, unit="%"):
     <div style="background:{bg2};border:1px solid {border};border-radius:10px;padding:14px 16px;margin-bottom:10px">
         <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px">
             <span style="font-size:12px;color:{text4};font-weight:600;text-transform:uppercase;letter-spacing:.08em">{label}</span>
-            <span style="font-size:20px;font-weight:700;color:{bar_color};font-family:'JetBrains Mono',monospace">{value}{unit}</span>
+            <span style="font-size:20px;font-weight:700;color:{bar_color};font-family:JetBrains Mono,monospace">{value}{unit}</span>
         </div>
         <div style="height:6px;background:{"#1a2235" if dark else "#e2e8f0"};border-radius:3px;overflow:hidden">
             <div style="width:{pct}%;height:100%;background:{bar_color};border-radius:3px;transition:width .3s"></div>
@@ -500,7 +500,7 @@ def render_sidebar():
         st.markdown(f"""
         <hr class="sb-divider">
         <div class="nav-section">Система</div>
-        <div style="padding:8px 16px;font-size:12px;font-family:'JetBrains Mono',monospace">
+        <div style="padding:8px 16px;font-size:12px;font-family:JetBrains Mono,monospace">
             <div style="color:#22c55e;margin-bottom:4px">✅ OK: {ok_n}</div>
             <div style="color:{'#ef4444' if prob_n > 0 else '#3a4a6b'}">{'⚠️' if prob_n > 0 else '●'} Проблем: {prob_n}</div>
         </div>
@@ -626,7 +626,7 @@ def page_analytics():
                         <div style="width:{pct}%;height:100%;background:{color};border-radius:4px;transition:width .3s"></div>
                     </div>
                     <div class="uptime-pct" style="color:{color}">{pct}%</div>
-                    <div style="font-size:10px;color:{text4};font-family:'JetBrains Mono',monospace;min-width:50px">{count} runs</div>
+                    <div style="font-size:10px;color:{text4};font-family:JetBrains Mono,monospace;min-width:50px">{count} runs</div>
                 </div>"""
 
             st.markdown(bars_html, unsafe_allow_html=True)
@@ -768,7 +768,7 @@ def page_system():
         age_sec = (datetime.now() - collected_naive).total_seconds()
         age_str = f"{int(age_sec)}с тому" if age_sec < 120 else f"{int(age_sec/60)}хв тому"
         freshness_color = "#22c55e" if age_sec < 60 else "#f59e0b" if age_sec < 180 else "#ef4444"
-        st.markdown(f'<div style="font-size:11px;color:{freshness_color};font-family:'JetBrains Mono',monospace;margin-bottom:12px">● Дані оновлено {age_str}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="font-size:11px;color:{freshness_color};font-family:JetBrains Mono,monospace;margin-bottom:12px">● Дані оновлено {age_str}</div>', unsafe_allow_html=True)
 
     col1, col2, col3 = st.columns([1, 1, 1])
 
@@ -798,12 +798,12 @@ def page_system():
                 <span style="font-size:14px;font-weight:700;color:{status_color}">run_forever.py</span>
                 <span style="font-size:11px;color:{status_color};background:{"rgba(34,197,94,.1)" if alive else "rgba(239,68,68,.1)"};padding:1px 8px;border-radius:10px">{status_text}</span>
             </div>
-            <div style="font-size:12px;color:{text2};font-family:'JetBrains Mono',monospace">
+            <div style="font-size:12px;color:{text2};font-family:JetBrains Mono,monospace">
                 PID: {pid or "—"} · Uptime: {uptime}
             </div>
         </div>
         <div style="font-size:11px;color:{text4};margin-bottom:6px;text-transform:uppercase;letter-spacing:.08em;font-weight:600">Запущені воркери:</div>
-        <div style="font-size:12px;color:{"#4a9e6b" if workers != "—" else text4};font-family:'JetBrains Mono',monospace">{workers}</div>
+        <div style="font-size:12px;color:{"#4a9e6b" if workers != "—" else text4};font-family:JetBrains Mono,monospace">{workers}</div>
         """, unsafe_allow_html=True)
         st.markdown('</div>', unsafe_allow_html=True)
 
@@ -815,11 +815,11 @@ def page_system():
         st.markdown(f"""
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px">
             <div style="background:{bg3};border:1px solid {border};border-radius:8px;padding:12px;text-align:center">
-                <div style="font-size:22px;font-weight:700;color:#3b82f6;font-family:'JetBrains Mono',monospace">{db_size:.0f}</div>
+                <div style="font-size:22px;font-weight:700;color:#3b82f6;font-family:JetBrains Mono,monospace">{db_size:.0f}</div>
                 <div style="font-size:10px;color:{text4};text-transform:uppercase;letter-spacing:.08em;margin-top:2px">MB розмір</div>
             </div>
             <div style="background:{bg3};border:1px solid {border};border-radius:8px;padding:12px;text-align:center">
-                <div style="font-size:22px;font-weight:700;color:#8b5cf6;font-family:'JetBrains Mono',monospace">{db_conn}</div>
+                <div style="font-size:22px;font-weight:700;color:#8b5cf6;font-family:JetBrains Mono,monospace">{db_conn}</div>
                 <div style="font-size:10px;color:{text4};text-transform:uppercase;letter-spacing:.08em;margin-top:2px">З'єднань</div>
             </div>
         </div>
@@ -836,18 +836,18 @@ def page_system():
             bar_w = int((size_mb or 0) / max(max_size, 1) * 200)
             bar_color = "#3b82f6" if (size_mb or 0) < 100 else "#8b5cf6" if (size_mb or 0) < 500 else "#ef4444"
             rows_html += f"""<tr>
-                <td style="color:{text2};font-size:12px;padding:7px 12px;font-family:'JetBrains Mono',monospace">{table_name}</td>
+                <td style="color:{text2};font-size:12px;padding:7px 12px;font-family:JetBrains Mono,monospace">{table_name}</td>
                 <td style="padding:7px 12px">
                     <div style="display:flex;align-items:center;gap:8px">
                         <div style="width:{bar_w}px;height:6px;background:{bar_color};border-radius:3px;opacity:.8;min-width:2px"></div>
-                        <span style="color:{text1};font-size:12px;font-family:'JetBrains Mono',monospace">{size_mb:.1f} MB</span>
+                        <span style="color:{text1};font-size:12px;font-family:JetBrains Mono,monospace">{size_mb:.1f} MB</span>
                     </div>
                 </td>
-                <td style="color:{text4};font-size:11px;padding:7px 12px;font-family:'JetBrains Mono',monospace">{int(row_count or 0):,} рядків</td>
+                <td style="color:{text4};font-size:11px;padding:7px 12px;font-family:JetBrains Mono,monospace">{int(row_count or 0):,} рядків</td>
             </tr>"""
         st.markdown(f'<table style="width:100%;border-collapse:collapse">{rows_html}</table>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div style="color:{text4};font-size:13px">Дані з'являться через 5 хвилин після запуску system_monitor.py</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="color:{text4};font-size:13px">Дані зʼявляться через 5 хвилин після запуску system_monitor.py</div>', unsafe_allow_html=True)
     st.markdown('</div>', unsafe_allow_html=True)
     st.markdown(f'<div class="etl-footer">оновлення 30с · system_monitor.py · Kyiv TZ</div>', unsafe_allow_html=True)
 
