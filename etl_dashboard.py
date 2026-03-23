@@ -1,7 +1,9 @@
 """
-ETL Monitor v4.0
-- Page 1: Status dashboard
-- Page 2: Analytics — heatmap + avg time + Telegram alerts
+ETL Monitor v4.1
+- Sidebar навігація
+- Uptime воркерів (% успішних запусків)
+- Теплова карта
+- Алерти в Telegram
 """
 
 import streamlit as st
@@ -14,7 +16,7 @@ st.set_page_config(
     page_title="ETL Monitor",
     page_icon="⚡",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 KYIV_TZ = pytz.timezone("Europe/Kyiv")
@@ -83,70 +85,146 @@ TASK_MAP = [
     ("ledger_detail",    "spapi.ledger_detail",           "event_date",    "📒", "Ledger Detail"),
 ]
 
-# Алерт пороги (години без запуску)
 ALERT_THRESHOLDS = {
-    "ads":              6,
-    "transactions":     10,
-    "all_orders":       10,
-    "inventory":        30,
-    "manage_fba":       30,
-    "awd_inventory":    30,
-    "shipments":        26,
-    "sales_traffic":    10,
-    "promotions":       8,
-    "fba_returns":      26,
-    "fba_replacements": 26,
-    "rank_tracker":     26,
-    "ledger_summary":   26,
-    "ledger_detail":    26,
-    "bulk_daily":       26,
+    "ads": 6, "transactions": 10, "all_orders": 10,
+    "inventory": 30, "manage_fba": 30, "awd_inventory": 30,
+    "shipments": 26, "sales_traffic": 10, "promotions": 8,
+    "fba_returns": 26, "fba_replacements": 26, "rank_tracker": 26,
+    "ledger_summary": 26, "ledger_detail": 26, "bulk_daily": 26,
 }
 
 CUSTOM_THRESHOLDS = {
-    "inventory":        (28, 52),
-    "manage_fba":       (28, 52),
-    "awd_inventory":    (28, 52),
-    "rank_tracker":     (28, 52),
-    "ledger_summary":   (28, 52),
-    "ledger_detail":    (28, 52),
-    "bulk_daily":       (28, 52),
-    "shipments":        (36, 72),
-    "fba_replacements": (36, 72),
+    "inventory": (28, 52), "manage_fba": (28, 52), "awd_inventory": (28, 52),
+    "rank_tracker": (28, 52), "ledger_summary": (28, 52), "ledger_detail": (28, 52),
+    "bulk_daily": (28, 52), "shipments": (36, 72), "fba_replacements": (36, 72),
 }
 
 # ============================================================
-# SCHEDULE HELPERS
+# THEME
 # ============================================================
+if "dark_mode" not in st.session_state:
+    st.session_state.dark_mode = True
+dark = st.session_state.dark_mode
 
-def get_next_run(task_type):
-    now = now_kyiv()
-    today = now.date()
-    candidates = []
-    for h, m, t, p in SCHEDULE:
-        if t != task_type:
-            continue
-        scheduled = KYIV_TZ.localize(datetime(today.year, today.month, today.day, h, m, 0))
-        if scheduled <= now:
-            scheduled += timedelta(days=1)
-        candidates.append(scheduled)
-    return min(candidates) if candidates else None
+if dark:
+    bg, bg2, bg3 = "#080b12", "#0d1220", "#0f1520"
+    border = "#151e30"
+    text1, text2, text3, text4 = "#ffffff", "#d0d8e8", "#ffffff", "#6b7e9f"
+    row_hover, th_bg = "#0f1724", "#080b12"
+    sb_bg = "#0a0e18"
+else:
+    bg, bg2, bg3 = "#f4f6fb", "#ffffff", "#f8f9fc"
+    border = "#e2e8f0"
+    text1, text2, text3, text4 = "#0f172a", "#475569", "#1e293b", "#94a3b8"
+    row_hover, th_bg = "#f1f5f9", "#f8f9fc"
+    sb_bg = "#f0f2f8"
 
-def get_runs_per_day(task_type):
-    count = sum(1 for _, _, t, _ in SCHEDULE if t == task_type)
-    return f"{count}× / день"
+# ============================================================
+# CSS
+# ============================================================
+st.markdown(f"""
+<style>
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
+* {{ box-sizing:border-box; }}
+.stApp {{ background:{bg} !important; font-family:'Inter',sans-serif; }}
+.block-container {{ padding-top:1.5rem !important; max-width:1300px; }}
 
-def fmt_next(task_type):
-    nxt = get_next_run(task_type)
-    if not nxt:
-        return "—"
-    now = now_kyiv()
-    diff = (nxt - now).total_seconds()
-    h = int(diff // 3600)
-    m = int((diff % 3600) // 60)
-    time_str = nxt.strftime('%H:%M')
-    if h == 0:
-        return f"{time_str} ({m}хв)"
-    return f"{time_str} ({h}г {m:02d}хв)"
+/* Sidebar */
+[data-testid="stSidebar"] {{
+    background:{sb_bg} !important;
+    border-right:1px solid {border} !important;
+    min-width:220px !important;
+    max-width:220px !important;
+}}
+[data-testid="stSidebar"] * {{ color:{text2} !important; }}
+
+.sb-logo {{ padding:16px 16px 8px; }}
+.sb-logo img {{ height:26px; filter:{'brightness(0) invert(1)' if dark else 'none'}; opacity:.8; }}
+.sb-title {{ font-size:13px; font-weight:700; color:{text1} !important; margin-top:6px; letter-spacing:-.2px; }}
+.sb-sub {{ font-size:10px; color:{text4} !important; font-family:'JetBrains Mono',monospace; margin-top:2px; }}
+.sb-divider {{ border:none; border-top:1px solid {border}; margin:12px 0; }}
+
+.nav-item {{
+    display:flex; align-items:center; gap:10px;
+    padding:9px 16px; border-radius:8px; margin:2px 8px;
+    cursor:pointer; font-size:13px; font-weight:500;
+    color:{text2}; transition:background .15s;
+    text-decoration:none;
+}}
+.nav-item:hover {{ background:{"rgba(255,255,255,.05)" if dark else "rgba(0,0,0,.04)"}; }}
+.nav-item.active {{
+    background:{"rgba(59,130,246,.15)" if dark else "rgba(59,130,246,.1)"};
+    color:{'#60a5fa' if dark else '#2563eb'} !important;
+}}
+.nav-icon {{ font-size:16px; width:20px; text-align:center; }}
+.nav-section {{ font-size:10px; color:{text4}; text-transform:uppercase; letter-spacing:.1em; padding:8px 16px 4px; font-weight:600; }}
+
+/* Header */
+.page-header {{ margin-bottom:20px; }}
+.page-title {{ font-size:22px; font-weight:700; color:{text1}; letter-spacing:-.3px; }}
+.page-sub {{ font-size:12px; color:{text4}; font-family:'JetBrains Mono',monospace; margin-top:2px; }}
+
+/* Metrics */
+.metrics-row {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }}
+.metric {{ background:{bg2}; border:1px solid {border}; border-radius:10px; padding:15px 18px; position:relative; overflow:hidden; }}
+.metric::after {{ content:''; position:absolute; top:0; left:0; right:0; height:2px; }}
+.m-ok::after {{ background:#22c55e; }} .m-warn::after {{ background:#f59e0b; }}
+.m-stale::after {{ background:#ef4444; }} .m-total::after {{ background:#3b82f6; }}
+.metric-num {{ font-size:36px; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1; }}
+.m-ok .metric-num {{ color:#22c55e; }} .m-warn .metric-num {{ color:#f59e0b; }}
+.m-stale .metric-num {{ color:#ef4444; }} .m-total .metric-num {{ color:#3b82f6; }}
+.metric-lbl {{ font-size:10px; color:{text4}; text-transform:uppercase; letter-spacing:.1em; margin-top:4px; font-weight:600; }}
+
+/* Table */
+.etl-wrap {{ background:{bg2}; border:1px solid {border}; border-radius:12px; overflow:hidden; margin-top:10px; }}
+.etl-table {{ width:100%; border-collapse:collapse; font-size:13px; }}
+.etl-table th {{ background:{th_bg}; color:{text3}; font-size:10px; text-transform:uppercase; letter-spacing:.1em; padding:10px 14px; text-align:left; font-weight:700; border-bottom:1px solid {border}; }}
+.etl-table td {{ padding:11px 14px; border-bottom:1px solid {bg3}; vertical-align:middle; }}
+.etl-table tr:last-child td {{ border-bottom:none; }}
+.etl-table tr:hover td {{ background:{row_hover}; }}
+.c-name {{ color:{text1}; font-weight:600; font-size:14px; }}
+.c-tbl  {{ color:#7ec8a0; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:500; }}
+.c-cnt  {{ color:{text2}; font-family:'JetBrains Mono',monospace; font-size:12px; }}
+.c-ran  {{ color:#4a9e6b; font-family:'JetBrains Mono',monospace; font-size:11px; }}
+.c-nxt  {{ color:#5a7a9e; font-family:'JetBrains Mono',monospace; font-size:11px; }}
+.c-ok {{ color:#22c55e; font-weight:500; }} .c-warn {{ color:#f59e0b; font-weight:500; }}
+.c-stale {{ color:#ef4444; font-weight:500; }} .c-empty {{ color:{text4}; }}
+.freq-pill {{ font-size:10px; color:{text4}; background:{bg3}; border:1px solid {border}; padding:2px 8px; border-radius:10px; font-family:'JetBrains Mono',monospace; white-space:nowrap; }}
+.badge {{ display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }}
+.b-ok {{ background:rgba(34,197,94,.1); color:#22c55e; border:1px solid rgba(34,197,94,.25); }}
+.b-warn {{ background:rgba(245,158,11,.1); color:#f59e0b; border:1px solid rgba(245,158,11,.25); }}
+.b-stale {{ background:rgba(239,68,68,.1); color:#ef4444; border:1px solid rgba(239,68,68,.25); }}
+.b-empty {{ background:rgba(100,116,139,.1); color:{text4}; border:1px solid {border}; }}
+.dot {{ width:6px; height:6px; border-radius:50%; display:inline-block; }}
+.dot-ok {{ background:#22c55e; {'box-shadow:0 0 5px #22c55e;' if dark else ''} }}
+.dot-warn {{ background:#f59e0b; {'box-shadow:0 0 5px #f59e0b;' if dark else ''} }}
+.dot-stale {{ background:#ef4444; {'box-shadow:0 0 5px #ef4444;' if dark else ''} }}
+.dot-empty {{ background:{text4}; }}
+
+/* Analytics cards */
+.stat-card {{ background:{bg2}; border:1px solid {border}; border-radius:12px; padding:18px 20px; margin-bottom:14px; }}
+.stat-card h4 {{ font-size:11px; color:{text4}; text-transform:uppercase; letter-spacing:.1em; margin:0 0 14px; font-weight:700; }}
+.alert-row {{ background:rgba(239,68,68,.07); border:1px solid rgba(239,68,68,.2); border-radius:8px; padding:10px 14px; margin-bottom:6px; display:flex; justify-content:space-between; align-items:center; }}
+.alert-name {{ color:#ef4444; font-weight:600; font-size:13px; }}
+.alert-info {{ color:{text2}; font-size:11px; font-family:'JetBrains Mono',monospace; }}
+
+/* Uptime bars */
+.uptime-row {{ display:flex; align-items:center; gap:12px; margin-bottom:8px; }}
+.uptime-label {{ color:{text2}; font-size:12px; font-family:'JetBrains Mono',monospace; min-width:130px; }}
+.uptime-bar-wrap {{ flex:1; height:8px; background:{"#1a2235" if dark else "#e2e8f0"}; border-radius:4px; overflow:hidden; }}
+.uptime-pct {{ font-size:12px; font-weight:600; min-width:44px; text-align:right; font-family:'JetBrains Mono',monospace; }}
+
+/* Heatmap */
+.hm-wrap {{ overflow-x:auto; padding-bottom:4px; }}
+.hm-table {{ border-collapse:separate; border-spacing:2px; font-size:11px; font-family:'JetBrains Mono',monospace; }}
+.hm-table td.cell {{ width:16px; height:16px; border-radius:3px; }}
+.hm-label {{ color:{text2}; padding-right:10px; text-align:right; white-space:nowrap; font-size:11px; min-width:110px; }}
+.hm-date-label {{ color:{text4}; font-size:10px; padding:0 2px; text-align:left; }}
+
+.etl-footer {{ text-align:center; font-size:11px; color:{text4}; margin-top:16px; font-family:'JetBrains Mono',monospace; }}
+#MainMenu,footer,header,.stDeployButton {{ display:none !important; }}
+</style>
+""", unsafe_allow_html=True)
 
 # ============================================================
 # DB
@@ -177,10 +255,7 @@ def query(sql, params=None):
             return None
 
 def table_exists(schema, table):
-    r = query(
-        "SELECT EXISTS(SELECT FROM information_schema.tables WHERE table_schema=%s AND table_name=%s)",
-        (schema, table)
-    )
+    r = query("SELECT EXISTS(SELECT FROM information_schema.tables WHERE table_schema=%s AND table_name=%s)", (schema, table))
     return r and r[0][0]
 
 def get_stats(schema_table, date_col):
@@ -198,7 +273,7 @@ def get_stats(schema_table, date_col):
     return count, last_date
 
 # ============================================================
-# STATUS
+# HELPERS
 # ============================================================
 
 def hours_since(last_date):
@@ -223,12 +298,7 @@ def get_status(task_type, last_date):
             return "unknown"
         ok_h = (24 / runs) * 1.5
         warn_h = ok_h * 2.5
-    if h <= ok_h:
-        return "ok"
-    elif h <= warn_h:
-        return "warn"
-    else:
-        return "stale"
+    return "ok" if h <= ok_h else "warn" if h <= warn_h else "stale"
 
 def fmt_last(last_date):
     if last_date is None:
@@ -245,43 +315,30 @@ def fmt_last(last_date):
     else:
         return f"{int(h/24)}д тому"
 
-# ============================================================
-# ETL LOG
-# ============================================================
+def get_next_run(task_type):
+    now = now_kyiv()
+    today = now.date()
+    candidates = []
+    for h, m, t, p in SCHEDULE:
+        if t != task_type:
+            continue
+        scheduled = KYIV_TZ.localize(datetime(today.year, today.month, today.day, h, m, 0))
+        if scheduled <= now:
+            scheduled += timedelta(days=1)
+        candidates.append(scheduled)
+    return min(candidates) if candidates else None
 
-@st.cache_data(ttl=120)
-def load_etl_log():
-    r = query("""
-        SELECT DISTINCT ON (task_type)
-            task_type, ran_at, rows_saved, elapsed_sec, status
-        FROM public.etl_log
-        ORDER BY task_type, ran_at DESC
-    """)
-    if not r:
-        return {}
-    log = {}
-    for task_type, ran_at, rows_saved, elapsed_sec, status in r:
-        log[task_type] = {"ran_at": ran_at, "rows_saved": rows_saved,
-                          "elapsed_sec": elapsed_sec, "status": status}
-    return log
+def fmt_next(task_type):
+    nxt = get_next_run(task_type)
+    if not nxt:
+        return "—"
+    now = now_kyiv()
+    diff = (nxt - now).total_seconds()
+    h, m = int(diff // 3600), int((diff % 3600) // 60)
+    return f"{nxt.strftime('%H:%M')} ({h}г {m:02d}хв)" if h > 0 else f"{nxt.strftime('%H:%M')} ({m}хв)"
 
-@st.cache_data(ttl=120)
-def load_etl_log_history(days=30):
-    """Завантажує всю історію для heatmap і статистики"""
-    r = query("""
-        SELECT task_type, ran_at, rows_saved, elapsed_sec, status
-        FROM public.etl_log
-        WHERE ran_at >= NOW() - INTERVAL '%s days'
-        ORDER BY ran_at DESC
-    """, (days,))
-    if not r:
-        return pd.DataFrame()
-    df = pd.DataFrame(r, columns=["task_type", "ran_at", "rows_saved", "elapsed_sec", "status"])
-    df["ran_at"] = pd.to_datetime(df["ran_at"], utc=True)
-    df["date"] = df["ran_at"].dt.tz_convert(KYIV_TZ).dt.date
-    df["hour"] = df["ran_at"].dt.tz_convert(KYIV_TZ).dt.hour
-    df["elapsed_min"] = df["elapsed_sec"].astype(float) / 60
-    return df
+def get_runs_per_day(task_type):
+    return f"{sum(1 for _, _, t, _ in SCHEDULE if t == task_type)}× / день"
 
 def fmt_ran_at(ran_at):
     if not ran_at:
@@ -290,7 +347,7 @@ def fmt_ran_at(ran_at):
     ran = ran_at.replace(tzinfo=None) if hasattr(ran_at, 'tzinfo') and ran_at.tzinfo else ran_at
     diff = (now - ran).total_seconds()
     if diff < 60:
-        return f"{int(diff)}с тому"
+        return f"{int(diff)}с"
     elif diff < 3600:
         return f"{int(diff/60)}хв тому"
     elif diff < 86400:
@@ -299,8 +356,26 @@ def fmt_ran_at(ran_at):
         return f"{int(diff/86400)}д тому"
 
 # ============================================================
-# LOAD MAIN DATA
+# DATA LOADERS
 # ============================================================
+
+@st.cache_data(ttl=120)
+def load_etl_log():
+    r = query("SELECT DISTINCT ON (task_type) task_type, ran_at, rows_saved, elapsed_sec, status FROM public.etl_log ORDER BY task_type, ran_at DESC")
+    if not r:
+        return {}
+    return {row[0]: {"ran_at": row[1], "rows_saved": row[2], "elapsed_sec": row[3], "status": row[4]} for row in r}
+
+@st.cache_data(ttl=120)
+def load_etl_log_history(days=30):
+    r = query(f"SELECT task_type, ran_at, rows_saved, elapsed_sec, status FROM public.etl_log WHERE ran_at >= NOW() - INTERVAL '{days} days' ORDER BY ran_at DESC")
+    if not r:
+        return pd.DataFrame()
+    df = pd.DataFrame(r, columns=["task_type", "ran_at", "rows_saved", "elapsed_sec", "status"])
+    df["ran_at"] = pd.to_datetime(df["ran_at"], utc=True)
+    df["date"] = df["ran_at"].dt.tz_convert(KYIV_TZ).dt.date
+    df["elapsed_min"] = pd.to_numeric(df["elapsed_sec"], errors="coerce") / 60
+    return df
 
 @st.cache_data(ttl=120)
 def load_all():
@@ -310,194 +385,74 @@ def load_all():
         count, last_date = get_stats(schema_table, date_col)
         status = get_status(task_type, last_date) if count is not None else "empty"
         rows.append({
-            "task":      task_type,
-            "icon":      icon,
-            "label":     label,
-            "table":     schema_table,
-            "count":     count,
-            "last_str":  fmt_last(last_date),
-            "next_str":  fmt_next(task_type),
-            "freq":      get_runs_per_day(task_type),
-            "status":    status,
-            "ran_at":    fmt_ran_at(etl_log.get(task_type, {}).get("ran_at")),
-            "ran_at_raw": etl_log.get(task_type, {}).get("ran_at"),
+            "task": task_type, "icon": icon, "label": label, "table": schema_table,
+            "count": count, "last_str": fmt_last(last_date), "next_str": fmt_next(task_type),
+            "freq": get_runs_per_day(task_type), "status": status,
+            "ran_at": fmt_ran_at(etl_log.get(task_type, {}).get("ran_at")),
         })
     return rows
 
 # ============================================================
-# TELEGRAM ALERT
+# SIDEBAR
 # ============================================================
 
-def send_telegram_alert(text: str):
-    """Шле алерт через Telegram бот"""
-    import requests as req
-    bot_token = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
-    if not bot_token:
-        return False
-    db_url = st.secrets.get("DATABASE_URL", "")
-    if not db_url:
-        return False
-    try:
-        conn = psycopg2.connect(
-            db_url.replace("postgres://", "postgresql://", 1),
-            sslmode='require', connect_timeout=5
-        )
-        cur = conn.cursor()
-        cur.execute("SELECT chat_id FROM telegram_subscribers WHERE subscribed = TRUE LIMIT 10")
-        subs = [r[0] for r in cur.fetchall()]
-        cur.close()
-        conn.close()
-    except:
-        subs = []
-
-    if not subs:
-        return False
-
-    sent = 0
-    for chat_id in subs:
-        try:
-            r = req.post(
-                f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                json={"chat_id": chat_id, "text": text, "parse_mode": "HTML"},
-                timeout=10
-            )
-            if r.status_code == 200:
-                sent += 1
-        except:
-            pass
-    return sent > 0
-
-# ============================================================
-# THEME
-# ============================================================
-
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = True
-
-dark = st.session_state.dark_mode
-
-if dark:
-    bg, bg2, bg3 = "#080b12", "#0d1220", "#0f1520"
-    border = "#151e30"
-    text1, text2, text3, text4 = "#ffffff", "#d0d8e8", "#ffffff", "#6b7e9f"
-    row_hover, th_bg = "#0f1724", "#080b12"
-    card_bg = "#0d1220"
-else:
-    bg, bg2, bg3 = "#f4f6fb", "#ffffff", "#f8f9fc"
-    border = "#e2e8f0"
-    text1, text2, text3, text4 = "#0f172a", "#475569", "#1e293b", "#94a3b8"
-    row_hover, th_bg = "#f1f5f9", "#f8f9fc"
-    card_bg = "#ffffff"
-
-st.markdown(f"""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Inter:wght@400;500;600;700&display=swap');
-* {{ box-sizing: border-box; }}
-.stApp {{ background: {bg} !important; font-family: 'Inter', sans-serif; }}
-.block-container {{ padding-top: 1.2rem !important; max-width: 1400px; }}
-
-.etl-logo {{ display:flex; align-items:center; gap:12px; margin-bottom:2px; }}
-.etl-logo img {{ height:30px; filter:{'brightness(0) invert(1)' if dark else 'none'}; opacity:{'.85' if dark else '1'}; }}
-.etl-title {{ font-size:21px; font-weight:700; color:{text1}; letter-spacing:-0.3px; }}
-.etl-ver {{ font-size:10px; color:{text4}; font-family:'JetBrains Mono',monospace; background:{bg3}; padding:2px 7px; border-radius:4px; border:1px solid {border}; margin-left:6px; }}
-.etl-sub {{ font-size:12px; color:{text4}; margin-bottom:18px; font-family:'JetBrains Mono',monospace; }}
-
-.metrics-row {{ display:grid; grid-template-columns:repeat(4,1fr); gap:10px; margin-bottom:18px; }}
-.metric {{ background:{bg2}; border:1px solid {border}; border-radius:10px; padding:15px 18px; position:relative; overflow:hidden; }}
-.metric::after {{ content:''; position:absolute; top:0; left:0; right:0; height:2px; }}
-.m-ok::after {{ background:#22c55e; }}
-.m-warn::after {{ background:#f59e0b; }}
-.m-stale::after {{ background:#ef4444; }}
-.m-total::after {{ background:#3b82f6; }}
-.metric-num {{ font-size:36px; font-weight:700; font-family:'JetBrains Mono',monospace; line-height:1; }}
-.m-ok .metric-num {{ color:#22c55e; }}
-.m-warn .metric-num {{ color:#f59e0b; }}
-.m-stale .metric-num {{ color:#ef4444; }}
-.m-total .metric-num {{ color:#3b82f6; }}
-.metric-lbl {{ font-size:10px; color:{text4}; text-transform:uppercase; letter-spacing:.1em; margin-top:4px; font-weight:600; }}
-
-.etl-wrap {{ background:{bg2}; border:1px solid {border}; border-radius:12px; overflow:hidden; margin-top:10px; }}
-.etl-table {{ width:100%; border-collapse:collapse; font-size:13px; }}
-.etl-table th {{ background:{th_bg}; color:{text3}; font-size:10px; text-transform:uppercase; letter-spacing:.1em; padding:10px 14px; text-align:left; font-weight:700; border-bottom:1px solid {border}; }}
-.etl-table td {{ padding:11px 14px; border-bottom:1px solid {bg3}; vertical-align:middle; }}
-.etl-table tr:last-child td {{ border-bottom:none; }}
-.etl-table tr:hover td {{ background:{row_hover}; }}
-
-.c-name {{ color:{text1}; font-weight:600; font-size:14px; }}
-.c-tbl  {{ color:#7ec8a0; font-family:'JetBrains Mono',monospace; font-size:12px; font-weight:500; }}
-.c-cnt  {{ color:{text2}; font-family:'JetBrains Mono',monospace; font-size:12px; }}
-.c-ran  {{ color:#4a9e6b; font-family:'JetBrains Mono',monospace; font-size:11px; }}
-.c-nxt  {{ color:#5a7a9e; font-family:'JetBrains Mono',monospace; font-size:11px; }}
-.c-ok   {{ color:#22c55e; font-weight:500; }}
-.c-warn {{ color:#f59e0b; font-weight:500; }}
-.c-stale{{ color:#ef4444; font-weight:500; }}
-.c-empty{{ color:{text4}; }}
-
-.freq-pill {{ font-size:10px; color:{text4}; background:{bg3}; border:1px solid {border}; padding:2px 8px; border-radius:10px; font-family:'JetBrains Mono',monospace; white-space:nowrap; }}
-.badge {{ display:inline-flex; align-items:center; gap:4px; padding:3px 9px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }}
-.b-ok    {{ background:rgba(34,197,94,.1);  color:#22c55e; border:1px solid rgba(34,197,94,.25); }}
-.b-warn  {{ background:rgba(245,158,11,.1); color:#f59e0b; border:1px solid rgba(245,158,11,.25); }}
-.b-stale {{ background:rgba(239,68,68,.1);  color:#ef4444; border:1px solid rgba(239,68,68,.25); }}
-.b-empty {{ background:rgba(100,116,139,.1);color:{text4}; border:1px solid {border}; }}
-.dot {{ width:6px; height:6px; border-radius:50%; display:inline-block; }}
-.dot-ok    {{ background:#22c55e; {'box-shadow:0 0 5px #22c55e;' if dark else ''} }}
-.dot-warn  {{ background:#f59e0b; {'box-shadow:0 0 5px #f59e0b;' if dark else ''} }}
-.dot-stale {{ background:#ef4444; {'box-shadow:0 0 5px #ef4444;' if dark else ''} }}
-.dot-empty {{ background:{text4}; }}
-
-/* Analytics */
-.stat-card {{ background:{bg2}; border:1px solid {border}; border-radius:10px; padding:16px 18px; margin-bottom:10px; }}
-.stat-card h4 {{ font-size:12px; color:{text4}; text-transform:uppercase; letter-spacing:.08em; margin:0 0 12px 0; font-weight:600; }}
-.alert-card {{ background:rgba(239,68,68,.08); border:1px solid rgba(239,68,68,.25); border-radius:10px; padding:14px 16px; margin-bottom:8px; }}
-.alert-card .a-title {{ color:#ef4444; font-weight:600; font-size:14px; }}
-.alert-card .a-sub {{ color:{text2}; font-size:12px; margin-top:2px; font-family:'JetBrains Mono',monospace; }}
-
-/* Heatmap */
-.hm-wrap {{ overflow-x:auto; }}
-.hm-table {{ border-collapse:collapse; font-size:11px; font-family:'JetBrains Mono',monospace; }}
-.hm-table td {{ width:18px; height:18px; border-radius:3px; margin:1px; }}
-.hm-table th {{ color:{text4}; font-weight:400; padding:2px 4px; text-align:center; }}
-.hm-label {{ color:{text2}; padding-right:8px; text-align:right; white-space:nowrap; font-size:11px; }}
-
-.etl-footer {{ text-align:center; font-size:11px; color:{text4}; margin-top:14px; font-family:'JetBrains Mono',monospace; }}
-#MainMenu,footer,header,.stDeployButton {{ display:none !important; }}
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================================
-# HEADER (shared)
-# ============================================================
-
-def render_header():
+def render_sidebar():
     now = now_kyiv()
-    col_logo, col_toggle = st.columns([6, 1])
-    with col_logo:
+    with st.sidebar:
         st.markdown(f"""
-        <div class="etl-logo">
+        <div class="sb-logo">
             <img src="https://udcparts.com/cdn/shop/files/logo.svg?v=1701894617&width=300" alt="UDC">
-            <span class="etl-title">ETL Monitor <span class="etl-ver">v4.0</span></span>
+            <div class="sb-title">ETL Monitor</div>
+            <div class="sb-sub">{now.strftime('%H:%M')} Kyiv · v4.1</div>
         </div>
-        <div class="etl-sub">Amazon Data Pipeline · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
+        <hr class="sb-divider">
         """, unsafe_allow_html=True)
-    with col_toggle:
-        st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        if st.button("☀️ День" if dark else "🌙 Ніч", use_container_width=True):
+
+        page = st.radio(
+            "nav",
+            options=["📊 Статус", "📈 Аналітика"],
+            label_visibility="collapsed",
+            key="nav_radio"
+        )
+
+        st.markdown("<hr class='sb-divider'>", unsafe_allow_html=True)
+
+        theme_label = "☀️ Світла тема" if dark else "🌙 Темна тема"
+        if st.button(theme_label, use_container_width=True):
             st.session_state.dark_mode = not st.session_state.dark_mode
             st.rerun()
 
+        # Статус системи в sidebar
+        data = load_all()
+        ok_n = sum(1 for r in data if r["status"] == "ok")
+        prob_n = sum(1 for r in data if r["status"] in ("warn", "stale"))
+        st.markdown(f"""
+        <hr class="sb-divider">
+        <div class="nav-section">Система</div>
+        <div style="padding:8px 16px;font-size:12px;font-family:'JetBrains Mono',monospace">
+            <div style="color:#22c55e;margin-bottom:4px">✅ OK: {ok_n}</div>
+            <div style="color:{'#ef4444' if prob_n > 0 else '#3a4a6b'}">{'⚠️' if prob_n > 0 else '●'} Проблем: {prob_n}</div>
+        </div>
+        """, unsafe_allow_html=True)
+
+        return page
+
 # ============================================================
-# PAGE 1: STATUS
+# PAGE: STATUS
 # ============================================================
 
-def page_status():
-    render_header()
+def page_status(data):
+    now = now_kyiv()
+    st.markdown(f"""
+    <div class="page-header">
+        <div class="page-title">📊 Статус завантажувачів</div>
+        <div class="page-sub">Актуальні дані з БД · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
+    </div>
+    """, unsafe_allow_html=True)
 
-    data = load_all()
     ok_n    = sum(1 for r in data if r["status"] == "ok")
-    warn_n  = sum(1 for r in data if r["status"] == "warn")
-    stale_n = sum(1 for r in data if r["status"] == "stale")
+    prob_n  = sum(1 for r in data if r["status"] in ("warn", "stale"))
     empty_n = sum(1 for r in data if r["status"] == "empty")
-    prob_n  = warn_n + stale_n
 
     st.markdown(f"""
     <div class="metrics-row">
@@ -525,8 +480,7 @@ def page_status():
     elif flt == "⬜ Порожні":
         filtered = [r for r in data if r["status"] == "empty"]
 
-    order = {"stale": 0, "warn": 1, "empty": 2, "ok": 3}
-    filtered.sort(key=lambda x: order.get(x["status"], 9))
+    filtered = sorted(filtered, key=lambda x: {"stale": 0, "warn": 1, "empty": 2, "ok": 3}.get(x["status"], 9))
 
     badge_map = {
         "ok":    '<span class="badge b-ok"><span class="dot dot-ok"></span>OK</span>',
@@ -539,17 +493,15 @@ def page_status():
     rows_html = ""
     for r in filtered:
         cnt = f"{r['count']:,}" if r["count"] is not None else "—"
-        badge = badge_map.get(r["status"], "")
-        lc = last_cls.get(r["status"], "c-empty")
         rows_html += f"""<tr>
             <td class="c-name">{r['icon']} {r['label']}</td>
             <td class="c-tbl">{r['table']}</td>
             <td class="c-cnt">{cnt}</td>
-            <td class="{lc}">{r['last_str']}</td>
+            <td class="{last_cls.get(r['status'], 'c-empty')}">{r['last_str']}</td>
             <td class="c-ran">{r['ran_at']}</td>
             <td class="c-nxt">{r['next_str']}</td>
             <td><span class="freq-pill">{r['freq']}</span></td>
-            <td>{badge}</td>
+            <td>{badge_map.get(r['status'], '')}</td>
         </tr>"""
 
     st.markdown(f"""
@@ -566,23 +518,58 @@ def page_status():
     """, unsafe_allow_html=True)
 
 # ============================================================
-# PAGE 2: ANALYTICS
+# PAGE: ANALYTICS
 # ============================================================
 
 def page_analytics():
-    render_header()
+    now = now_kyiv()
+    st.markdown(f"""
+    <div class="page-header">
+        <div class="page-title">📈 Аналітика</div>
+        <div class="page-sub">Останні 30 днів · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
+    </div>
+    """, unsafe_allow_html=True)
 
     df = load_etl_log_history(30)
     etl_log = load_etl_log()
 
     col1, col2 = st.columns([1, 1])
 
-    # ── Алерти
+    # ── Uptime воркерів
     with col1:
-        st.markdown(f'<div class="stat-card"><h4>🔴 Алерти — воркери не запускались</h4>', unsafe_allow_html=True)
+        st.markdown('<div class="stat-card"><h4>🟢 Uptime воркерів (% успішних запусків)</h4>', unsafe_allow_html=True)
+
+        if not df.empty:
+            uptime = df.groupby("task_type").apply(
+                lambda x: round(100 * (x["status"] == "ok").sum() / len(x), 1)
+            ).sort_values(ascending=True)
+
+            bars_html = ""
+            for task, pct in uptime.items():
+                color = "#22c55e" if pct >= 95 else "#f59e0b" if pct >= 80 else "#ef4444"
+                count = len(df[df["task_type"] == task])
+                bars_html += f"""
+                <div class="uptime-row">
+                    <div class="uptime-label">{task}</div>
+                    <div class="uptime-bar-wrap">
+                        <div style="width:{pct}%;height:100%;background:{color};border-radius:4px;transition:width .3s"></div>
+                    </div>
+                    <div class="uptime-pct" style="color:{color}">{pct}%</div>
+                    <div style="font-size:10px;color:{text4};font-family:'JetBrains Mono',monospace;min-width:50px">{count} runs</div>
+                </div>"""
+
+            st.markdown(bars_html, unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div style="color:{text4};font-size:13px">Немає даних в etl_log</div>', unsafe_allow_html=True)
+
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Алерти
+    with col2:
+        st.markdown('<div class="stat-card"><h4>🔴 Алерти — не запускались більше порогу</h4>', unsafe_allow_html=True)
 
         alerts = []
-        now = datetime.now()
+        now_dt = datetime.now()
         for task_type, threshold_h in ALERT_THRESHOLDS.items():
             log = etl_log.get(task_type)
             if not log or not log.get("ran_at"):
@@ -590,170 +577,112 @@ def page_analytics():
                 continue
             ran_at = log["ran_at"]
             ran_naive = ran_at.replace(tzinfo=None) if hasattr(ran_at, 'tzinfo') and ran_at.tzinfo else ran_at
-            h_ago = (now - ran_naive).total_seconds() / 3600
+            h_ago = (now_dt - ran_naive).total_seconds() / 3600
             if h_ago > threshold_h:
                 alerts.append((task_type, h_ago, threshold_h))
 
         if alerts:
+            alerts_html = ""
             for task_type, h_ago, threshold_h in alerts:
-                if h_ago:
-                    sub = f"Не запускався {h_ago:.0f}г (поріг: {threshold_h}г)"
-                else:
-                    sub = f"Ніколи не запускався (поріг: {threshold_h}г)"
-                st.markdown(f"""
-                <div class="alert-card">
-                    <div class="a-title">⚠️ {task_type}</div>
-                    <div class="a-sub">{sub}</div>
-                </div>""", unsafe_allow_html=True)
+                info = f"{h_ago:.0f}г без запуску (поріг: {threshold_h}г)" if h_ago else f"ніколи не запускався"
+                alerts_html += f"""
+                <div class="alert-row">
+                    <div>
+                        <div class="alert-name">⚠️ {task_type}</div>
+                        <div class="alert-info">{info}</div>
+                    </div>
+                </div>"""
+            st.markdown(alerts_html, unsafe_allow_html=True)
 
-            # Кнопка надіслати алерт в Telegram
-            if st.button("📱 Надіслати алерти в Telegram", use_container_width=True):
+            if st.button("📱 Надіслати в Telegram", use_container_width=True):
                 lines = ["🔴 <b>ETL Monitor — Алерти</b>\n"]
                 for task_type, h_ago, threshold_h in alerts:
-                    if h_ago:
-                        lines.append(f"⚠️ {task_type}: {h_ago:.0f}г без запуску")
-                    else:
-                        lines.append(f"⚠️ {task_type}: ніколи не запускався")
-                text = "\n".join(lines)
-                if send_telegram_alert(text):
-                    st.success("✅ Надіслано!")
-                else:
-                    st.warning("⚠️ Не вдалось — перевір TELEGRAM_BOT_TOKEN в secrets")
+                    info = f"{h_ago:.0f}г без запуску" if h_ago else "ніколи не запускався"
+                    lines.append(f"⚠️ {task_type}: {info}")
+                _send_tg_alert("\n".join(lines))
         else:
-            st.markdown(f'<div style="color:#22c55e;font-size:14px;padding:8px 0">✅ Всі воркери працюють нормально</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="color:#22c55e;font-size:14px;padding:8px 0">✅ Всі воркери в нормі</div>', unsafe_allow_html=True)
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-    # ── Середній час виконання
-    with col2:
-        st.markdown(f'<div class="stat-card"><h4>⏱️ Середній час виконання (хв)</h4>', unsafe_allow_html=True)
-
-        if not df.empty:
-            avg_times = df[df["elapsed_min"] > 0].groupby("task_type")["elapsed_min"].agg(["mean", "max", "count"]).round(1)
-            avg_times = avg_times.sort_values("mean", ascending=False)
-
-            rows_html = ""
-            for task, row in avg_times.iterrows():
-                bar_w = min(int(row["mean"] / max(avg_times["mean"]) * 120), 120)
-                bar_color = "#22c55e" if row["mean"] < 5 else "#f59e0b" if row["mean"] < 15 else "#ef4444"
-                rows_html += f"""
-                <tr>
-                    <td style="color:{text2};font-size:12px;padding:5px 8px;font-family:'JetBrains Mono',monospace">{task}</td>
-                    <td style="padding:5px 8px">
-                        <div style="display:flex;align-items:center;gap:8px">
-                            <div style="width:{bar_w}px;height:8px;background:{bar_color};border-radius:4px;opacity:.8"></div>
-                            <span style="color:{text1};font-size:12px;font-family:'JetBrains Mono',monospace">{row['mean']:.1f}хв</span>
-                        </div>
-                    </td>
-                    <td style="color:{text4};font-size:11px;padding:5px 8px;font-family:'JetBrains Mono',monospace">max {row['max']:.1f}хв</td>
-                    <td style="color:{text4};font-size:11px;padding:5px 8px;font-family:'JetBrains Mono',monospace">{int(row['count'])} runs</td>
-                </tr>"""
-
-            st.markdown(f"""
-            <table style="width:100%;border-collapse:collapse">{rows_html}</table>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown(f'<div style="color:{text4};font-size:13px">Немає даних в etl_log</div>', unsafe_allow_html=True)
-
-        st.markdown('</div>', unsafe_allow_html=True)
-
-    # ── Теплова карта (як GitHub)
-    st.markdown(f'<div class="stat-card"><h4>🗓️ Теплова карта запусків (останні 30 днів)</h4>', unsafe_allow_html=True)
+    # ── Теплова карта
+    st.markdown('<div class="stat-card"><h4>🗓️ Теплова карта запусків (останні 30 днів)</h4>', unsafe_allow_html=True)
 
     if not df.empty:
-        # Унікальні task_type
-        all_tasks = sorted(df["task_type"].unique())
-
-        # Дати (останні 30 днів)
         today = date.today()
         dates = [today - timedelta(days=i) for i in range(29, -1, -1)]
+        all_tasks = sorted(df["task_type"].unique())
 
-        # Pivot: task_type x date → кількість запусків
-        pivot = df.groupby(["task_type", "date"]).size().reset_index(name="runs")
         pivot_dict = {}
-        for _, row in pivot.iterrows():
+        for _, row in df.groupby(["task_type", "date"]).size().reset_index(name="runs").iterrows():
             pivot_dict[(row["task_type"], row["date"])] = row["runs"]
 
-        # Кольори
         def cell_color(runs):
             if runs == 0:
                 return "#1a2235" if dark else "#ebedf0"
-            elif runs == 1:
-                return "#1a5c3a"
-            elif runs <= 3:
-                return "#26a148"
-            elif runs <= 5:
-                return "#2ecc71"
-            else:
-                return "#57e89c"
+            elif runs == 1: return "#1a5c3a"
+            elif runs <= 3: return "#26a148"
+            elif runs <= 5: return "#2ecc71"
+            else: return "#57e89c"
 
-        # Заголовки дат (кожні 7 днів)
-        date_headers = ""
+        # Заголовки дат
+        date_headers = "<th></th>"
         for i, d in enumerate(dates):
-            if i % 7 == 0:
-                date_headers += f'<th style="color:{"#3a4a6b" if dark else "#94a3b8"};font-weight:400;font-size:10px;padding:2px 3px;text-align:left">{d.strftime("%d.%m")}</th>'
-            else:
-                date_headers += '<th></th>'
+            label = d.strftime("%d.%m") if i % 7 == 0 else ""
+            date_headers += f'<th class="hm-date-label">{label}</th>'
 
-        # Рядки таблиці
-        table_rows = f'<tr><th style="min-width:80px"></th>{date_headers}</tr>'
+        table_rows = f"<tr>{date_headers}</tr>"
         for task in all_tasks:
             cells = f'<td class="hm-label">{task}</td>'
             for d in dates:
                 runs = pivot_dict.get((task, d), 0)
                 color = cell_color(runs)
-                tooltip = f"{runs} runs on {d}"
-                cells += f'<td title="{tooltip}" style="width:16px;height:16px;background:{color};border-radius:2px;border:1px solid {"#0d1220" if dark else "#fff"}"></td>'
-            table_rows += f'<tr>{cells}</tr>'
+                cells += f'<td class="cell" title="{runs} runs · {d}" style="background:{color};width:16px;height:16px;border-radius:3px"></td>'
+            table_rows += f"<tr>{cells}</tr>"
 
-        # Легенда
         legend = f"""
-        <div style="display:flex;align-items:center;gap:8px;margin-top:10px;font-size:11px;color:{"#3a4a6b" if dark else "#94a3b8"}">
+        <div style="display:flex;align-items:center;gap:6px;margin-top:12px;font-size:11px;color:{text4}">
             <span>Менше</span>
-            <div style="width:14px;height:14px;background:{"#1a2235" if dark else "#ebedf0"};border-radius:2px"></div>
-            <div style="width:14px;height:14px;background:#1a5c3a;border-radius:2px"></div>
-            <div style="width:14px;height:14px;background:#26a148;border-radius:2px"></div>
-            <div style="width:14px;height:14px;background:#2ecc71;border-radius:2px"></div>
-            <div style="width:14px;height:14px;background:#57e89c;border-radius:2px"></div>
+            {"".join(f'<div style="width:14px;height:14px;background:{c};border-radius:2px"></div>' for c in (["#1a2235" if dark else "#ebedf0", "#1a5c3a", "#26a148", "#2ecc71", "#57e89c"]))}
             <span>Більше</span>
         </div>"""
 
-        st.markdown(f"""
-        <div class="hm-wrap">
-            <table class="hm-table">{table_rows}</table>
-            {legend}
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f'<div class="hm-wrap"><table class="hm-table">{table_rows}</table>{legend}</div>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div style="color:{text4};font-size:13px;padding:8px 0">Немає даних — etl_log порожній. Дані з\'являться після першого запуску воркерів.</div>', unsafe_allow_html=True)
+        st.markdown(f'<div style="color:{text4};font-size:13px;padding:8px 0">Дані з\'являться після першого запуску воркерів.</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="etl-footer">cache 2хв · останні 30 днів · Kyiv TZ</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="etl-footer">cache 2хв · 30 днів · Kyiv TZ</div>', unsafe_allow_html=True)
+
+def _send_tg_alert(text):
+    import requests as req
+    bot_token = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
+    if not bot_token:
+        st.warning("⚠️ TELEGRAM_BOT_TOKEN не знайдено в secrets")
+        return
+    db_url = st.secrets.get("DATABASE_URL", "")
+    try:
+        conn = psycopg2.connect(db_url.replace("postgres://", "postgresql://", 1), sslmode='require', connect_timeout=5)
+        cur = conn.cursor()
+        cur.execute("SELECT chat_id FROM telegram_subscribers WHERE subscribed = TRUE LIMIT 10")
+        subs = [r[0] for r in cur.fetchall()]
+        cur.close(); conn.close()
+    except:
+        subs = []
+    sent = sum(1 for cid in subs if req.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
+        json={"chat_id": cid, "text": text, "parse_mode": "HTML"}, timeout=10).status_code == 200)
+    st.success(f"✅ Надіслано {sent} підписникам!") if sent else st.warning("⚠️ Не вдалось надіслати")
 
 # ============================================================
-# NAVIGATION
+# MAIN
 # ============================================================
 
 def main():
-    if "page" not in st.session_state:
-        st.session_state.page = "status"
+    page = render_sidebar()
+    data = load_all()
 
-    col_n1, col_n2, col_spacer = st.columns([1, 1, 8])
-    with col_n1:
-        if st.button("📊 Статус", use_container_width=True,
-                     type="primary" if st.session_state.page == "status" else "secondary"):
-            st.session_state.page = "status"
-            st.rerun()
-    with col_n2:
-        if st.button("📈 Аналітика", use_container_width=True,
-                     type="primary" if st.session_state.page == "analytics" else "secondary"):
-            st.session_state.page = "analytics"
-            st.rerun()
-
-    st.markdown("<div style='height:4px'></div>", unsafe_allow_html=True)
-
-    if st.session_state.page == "status":
-        page_status()
+    if page == "📊 Статус":
+        page_status(data)
     else:
         page_analytics()
 
