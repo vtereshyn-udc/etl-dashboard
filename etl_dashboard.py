@@ -880,6 +880,109 @@ def page_analytics():
         st.markdown(f'<div style="color:{text4};font-size:13px;padding:8px 0">Дані з\'являться після першого запуску воркерів.</div>', unsafe_allow_html=True)
 
     st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── CPU/RAM по часу
+    st.markdown('<div class="stat-card"><h4>🖥️ CPU / RAM по часу (останні 2 години)</h4>', unsafe_allow_html=True)
+    cpu_df = load_cpu_history()
+    if not cpu_df.empty:
+        cpu_df["time"] = pd.to_datetime(cpu_df["collected_at"], utc=True).dt.tz_convert(KYIV_TZ).dt.strftime("%H:%M")
+        cpu_vals = cpu_df["cpu_pct"].tolist()
+        ram_vals = cpu_df["ram_pct"].tolist()
+        times = cpu_df["time"].tolist()
+        n = len(times)
+        if n > 1:
+            # SVG line chart
+            w, h = 900, 140
+            pad = 40
+            def scale_x(i): return pad + i * (w - pad*2) / max(n-1,1)
+            def scale_y(v): return h - pad//2 - (v / 100) * (h - pad)
+            # CPU line
+            cpu_points = " ".join(f"{scale_x(i):.1f},{scale_y(v):.1f}" for i,v in enumerate(cpu_vals))
+            ram_points = " ".join(f"{scale_x(i):.1f},{scale_y(v):.1f}" for i,v in enumerate(ram_vals))
+            # X labels
+            x_labels = ""
+            step = max(1, n//6)
+            for i in range(0, n, step):
+                x_labels += f'<text x="{scale_x(i):.1f}" y="{h+2}" text-anchor="middle" font-size="10" fill="{text4}">{times[i]}</text>'
+            # Y labels
+            y_labels = ""
+            for v in [0,25,50,75,100]:
+                y = scale_y(v)
+                y_labels += f'<text x="{pad-4}" y="{y:.1f}" text-anchor="end" font-size="10" fill="{text4}">{v}%</text>'
+                y_labels += f'<line x1="{pad}" y1="{y:.1f}" x2="{w-pad}" y2="{y:.1f}" stroke="{border}" stroke-width="1" stroke-dasharray="3,3"/>'
+            svg = f"""<svg viewBox="0 0 {w} {h+14}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:160px">
+                {y_labels}
+                <polyline points="{ram_points}" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linejoin="round"/>
+                <polyline points="{cpu_points}" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linejoin="round"/>
+                {x_labels}
+                <circle cx="{scale_x(n-1):.1f}" cy="{scale_y(cpu_vals[-1]):.1f}" r="4" fill="#3b82f6"/>
+                <circle cx="{scale_x(n-1):.1f}" cy="{scale_y(ram_vals[-1]):.1f}" r="4" fill="#8b5cf6"/>
+                <text x="{scale_x(n-1)+6:.1f}" y="{scale_y(cpu_vals[-1]):.1f}" font-size="11" fill="#3b82f6">CPU {cpu_vals[-1]:.1f}%</text>
+                <text x="{scale_x(n-1)+6:.1f}" y="{scale_y(ram_vals[-1])+12:.1f}" font-size="11" fill="#8b5cf6">RAM {ram_vals[-1]:.1f}%</text>
+            </svg>"""
+            st.markdown(svg, unsafe_allow_html=True)
+            st.markdown(f'<div style="font-size:11px;color:{text4};margin-top:4px">🔵 CPU &nbsp;&nbsp; 🟣 RAM</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div style="color:{text4};font-size:13px">Дані зʼявляться після запуску system_monitor.py</div>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
+
+    col3, col4 = st.columns([1, 1])
+
+    # ── Час виконання воркерів
+    with col3:
+        st.markdown('<div class="stat-card"><h4>⏱️ Час виконання воркерів (хв)</h4>', unsafe_allow_html=True)
+        if not df.empty:
+            avg_times = df[df["elapsed_min"] > 0].groupby("task_type")["elapsed_min"].agg(["mean","max"]).round(2)
+            avg_times = avg_times.sort_values("mean", ascending=False).head(12)
+            if not avg_times.empty:
+                max_val = avg_times["mean"].max()
+                bars_html = ""
+                for task, row in avg_times.iterrows():
+                    bar_w = max(2, int(row["mean"] / max_val * 180))
+                    color = "#22c55e" if row["mean"] < 1 else "#f59e0b" if row["mean"] < 5 else "#ef4444"
+                    bars_html += f"""<div style="display:flex;align-items:center;gap:8px;margin-bottom:7px">
+                        <div style="min-width:120px;color:{text2};font-size:11px;font-family:JetBrains Mono,monospace;text-align:right">{task}</div>
+                        <div style="width:{bar_w}px;height:8px;background:{color};border-radius:4px;opacity:.85"></div>
+                        <div style="color:{text1};font-size:11px;font-family:JetBrains Mono,monospace">{row["mean"]:.2f}хв</div>
+                        <div style="color:{text4};font-size:10px;font-family:JetBrains Mono,monospace">max {row["max"]:.1f}</div>
+                    </div>"""
+                st.markdown(bars_html, unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div style="color:{text4};font-size:13px">Немає даних</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
+    # ── Ріст БД по днях
+    with col4:
+        st.markdown('<div class="stat-card"><h4>📈 Рядків збережено по днях</h4>', unsafe_allow_html=True)
+        if not df.empty:
+            daily = df[df["rows_saved"] > 0].groupby("date")["rows_saved"].sum().reset_index()
+            daily = daily.sort_values("date").tail(14)
+            if not daily.empty:
+                dates = daily["date"].astype(str).tolist()
+                vals = daily["rows_saved"].tolist()
+                max_v = max(vals) or 1
+                n = len(dates)
+                w2, h2 = 400, 120
+                pad2 = 35
+                bar_w2 = max(4, (w2 - pad2*2) // max(n,1) - 3)
+                bars = ""
+                for i, (d, v) in enumerate(zip(dates, vals)):
+                    bh = max(2, int(v / max_v * (h2 - pad2)))
+                    x = pad2 + i * ((w2 - pad2*2) // max(n,1))
+                    y = h2 - pad2 - bh
+                    color = "#3b82f6"
+                    label = f"{v//1000}K" if v >= 1000 else str(v)
+                    bars += f'<rect x="{x}" y="{y}" width="{bar_w2}" height="{bh}" fill="{color}" opacity=".8" rx="2"/>' 
+                    if i % 3 == 0:
+                        bars += f'<text x="{x+bar_w2//2}" y="{h2-2}" text-anchor="middle" font-size="9" fill="{text4}">{d[5:]}</text>'
+                svg2 = f'<svg viewBox="0 0 {w2} {h2+4}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:140px">{bars}</svg>'
+                st.markdown(svg2, unsafe_allow_html=True)
+                total_rows = sum(vals)
+                st.markdown(f'<div style="font-size:11px;color:{text4};margin-top:4px">Всього за 14 днів: {total_rows:,} рядків</div>', unsafe_allow_html=True)
+        else:
+            st.markdown(f'<div style="color:{text4};font-size:13px">Немає даних</div>', unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
+
     st.markdown(f'<div class="etl-footer">cache 2хв · 30 днів · Kyiv TZ</div>', unsafe_allow_html=True)
 
 def _send_tg_alert(text):
