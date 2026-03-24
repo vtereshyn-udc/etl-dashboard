@@ -806,7 +806,11 @@ def page_analytics():
                 for task_type, h_ago, threshold_h in alerts:
                     info = f"{h_ago:.0f}г без запуску" if h_ago else "ніколи не запускався"
                     lines.append(f"⚠️ {task_type}: {info}")
-                _send_tg_alert("\n".join(lines))
+                sent = _send_tg_alert("\n".join(lines))
+                if sent:
+                    st.success(f"✅ Надіслано {sent} підписникам!")
+                else:
+                    st.warning("⚠️ Не вдалось — перевір TELEGRAM_BOT_TOKEN і підписників")
         else:
             st.markdown(f'<div style="color:#22c55e;font-size:14px;padding:8px 0">✅ Всі воркери в нормі</div>', unsafe_allow_html=True)
 
@@ -876,9 +880,19 @@ def _send_tg_alert(text):
         cur.close(); conn.close()
     except:
         subs = []
-    sent = sum(1 for cid in subs if req.post(f"https://api.telegram.org/bot{bot_token}/sendMessage",
-        json={"chat_id": cid, "text": text, "parse_mode": "HTML"}, timeout=10).status_code == 200)
-    st.success(f"✅ Надіслано {sent} підписникам!") if sent else st.warning("⚠️ Не вдалось надіслати")
+    sent = 0
+    for cid in subs:
+        try:
+            r = req.post(
+                f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                json={"chat_id": cid, "text": text, "parse_mode": "HTML"},
+                timeout=10
+            )
+            if r.status_code == 200:
+                sent += 1
+        except:
+            pass
+    return sent
 
 
 def page_system():
@@ -1310,6 +1324,50 @@ def page_ai():
                     contents = [{"role": "user", "parts": [{"text": SYSTEM_PROMPT + "\n\n" + contents[0]["parts"][0]["text"]}]}]
                 else:
                     contents[0]["parts"][0]["text"] = SYSTEM_PROMPT + "\n\nКонтекст надано вище.\n\n" + contents[0]["parts"][0]["text"]
+
+                resp = req.post(
+                    f"https://generativelanguage.googleapis.com/v1/models/{gemini_model}:generateContent?key={gemini_key}",
+                    json={"contents": contents},
+                    timeout=30
+                )
+
+                if resp.status_code == 200:
+                    data_resp = resp.json()
+                    answer = data_resp["candidates"][0]["content"]["parts"][0]["text"]
+                elif resp.status_code == 400:
+                    answer = f"❌ Помилка запиту: {resp.json().get('error',{}).get('message','')}"
+                else:
+                    answer = f"❌ API помилка {resp.status_code}: {resp.text[:300]}"
+
+            except Exception as e:
+                answer = f"❌ Помилка: {e}"
+
+        st.session_state.ai_messages.append({"role": "assistant", "content": answer})
+        st.rerun()
+
+# ============================================================
+# MAIN
+# ============================================================
+
+def main():
+    if "page" not in st.session_state:
+        st.session_state.page = "📊 Статус"
+    render_sidebar()
+    page = st.session_state.page
+    if page == "📊 Статус":
+        page_status(load_all())
+    elif page == "📈 Аналітика":
+        page_analytics()
+    elif page == "🗄️ База даних":
+        page_database()
+    elif page == "🖥️ Система":
+        page_system()
+    elif page == "🤖 AI":
+        page_ai()
+    else:
+        page_status(load_all())
+
+main()
 
                 resp = req.post(
                     f"https://generativelanguage.googleapis.com/v1/models/{gemini_model}:generateContent?key={gemini_key}",
