@@ -886,6 +886,9 @@ def page_analytics():
     cpu_df = load_cpu_history()
     if not cpu_df.empty:
         cpu_df["time"] = pd.to_datetime(cpu_df["collected_at"], utc=True).dt.tz_convert(KYIV_TZ).dt.strftime("%H:%M")
+        cpu_df = cpu_df.dropna(subset=["cpu_pct", "ram_pct"])
+        cpu_df["cpu_pct"] = pd.to_numeric(cpu_df["cpu_pct"], errors="coerce").fillna(0)
+        cpu_df["ram_pct"] = pd.to_numeric(cpu_df["ram_pct"], errors="coerce").fillna(0)
         cpu_vals = cpu_df["cpu_pct"].tolist()
         ram_vals = cpu_df["ram_pct"].tolist()
         times = cpu_df["time"].tolist()
