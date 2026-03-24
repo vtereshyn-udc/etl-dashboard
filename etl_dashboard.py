@@ -869,17 +869,57 @@ def _send_tg_alert(text):
     import requests as req
     bot_token = st.secrets.get("TELEGRAM_BOT_TOKEN", "")
     if not bot_token:
-        st.warning("⚠️ TELEGRAM_BOT_TOKEN не знайдено в secrets")
-        return
-    db_url = st.secrets.get("DATABASE_URL", "")
-    try:
-        conn = psycopg2.connect(db_url.replace("postgres://", "postgresql://", 1), sslmode='require', connect_timeout=5)
-        cur = conn.cursor()
-        cur.execute("SELECT chat_id FROM telegram_subscribers WHERE subscribed = TRUE LIMIT 10")
-        subs = [r[0] for r in cur.fetchall()]
-        cur.close(); conn.close()
-    except:
-        subs = []
+        return 0
+
+    subs = []
+
+    # 1. З secrets (TELEGRAM_CHAT_IDS = "id1,id2")
+    chat_ids_str = st.secrets.get("TELEGRAM_CHAT_IDS", "")
+    if chat_ids_str:
+        subs = [c.strip() for c in chat_ids_str.split(",") if c.strip()]
+
+    # 2. З БД — telegram_subscribers таблиця
+    if not subs:
+        try:
+            db_url = st.secrets.get("DATABASE_URL", "")
+            conn = psycopg2.connect(
+                db_url.replace("postgres://", "postgresql://", 1),
+                sslmode="require", connect_timeout=5
+            )
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT chat_id FROM public.telegram_subscribers WHERE subscribed = TRUE LIMIT 20")
+                subs = [str(r[0]) for r in cur.fetchall()]
+            except:
+                conn.rollback()
+            cur.close()
+            conn.close()
+        except:
+            pass
+
+    # 3. З telegram_subscribers.json (файл на сервері через БД-таблицю)
+    if not subs:
+        try:
+            db_url = st.secrets.get("DATABASE_URL", "")
+            conn = psycopg2.connect(
+                db_url.replace("postgres://", "postgresql://", 1),
+                sslmode="require", connect_timeout=5
+            )
+            cur = conn.cursor()
+            # Читаємо підписників що були збережені з telegram_notifier.py
+            cur.execute("""
+                SELECT DISTINCT chat_id FROM public.etl_tg_subscribers
+                WHERE active = TRUE LIMIT 20
+            """)
+            subs = [str(r[0]) for r in cur.fetchall()]
+            cur.close()
+            conn.close()
+        except:
+            pass
+
+    if not subs:
+        return 0
+
     sent = 0
     for cid in subs:
         try:
@@ -890,8 +930,10 @@ def _send_tg_alert(text):
             )
             if r.status_code == 200:
                 sent += 1
-        except:
-            pass
+            else:
+                st.error(f"❌ chat_id {cid}: {r.status_code} — {r.json().get('description','')}")
+        except Exception as e:
+            st.error(f"❌ Exception: {e}")
     return sent
 
 
