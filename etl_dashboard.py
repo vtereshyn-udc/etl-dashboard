@@ -86,11 +86,28 @@ TASK_MAP = [
 ]
 
 ALERT_THRESHOLDS = {
-    "ads": 6, "transactions": 10, "all_orders": 10,
-    "inventory": 30, "manage_fba": 30, "awd_inventory": 30,
-    "shipments": 26, "sales_traffic": 10, "promotions": 8,
-    "fba_returns": 26, "fba_replacements": 26, "rank_tracker": 26,
-    "ledger_summary": 26, "ledger_detail": 26, "bulk_daily": 26,
+    # Скільки годин без запуску = алерт
+    # ADS запускається 5× на день (кожні ~4.8г) → алерт якщо > 10г
+    "ads":              10,
+    # Транзакції 3× на день → алерт якщо > 14г
+    "transactions":     14,
+    # All orders 3× на день → алерт якщо > 14г
+    "all_orders":       14,
+    # Sales traffic 3× на день → алерт якщо > 14г
+    "sales_traffic":    14,
+    # Promotions 4× на день → алерт якщо > 12г
+    "promotions":       12,
+    # Раз на день — алерт якщо > 30г
+    "inventory":        30,
+    "manage_fba":       30,
+    "awd_inventory":    30,
+    "shipments":        30,
+    "fba_returns":      30,
+    "fba_replacements": 30,
+    "rank_tracker":     30,
+    "ledger_summary":   30,
+    "ledger_detail":    30,
+    "bulk_daily":       30,
 }
 
 CUSTOM_THRESHOLDS = {
