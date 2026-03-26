@@ -1591,6 +1591,7 @@ def page_architecture():
             <div>📋 manage_fba_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ Reports API (швидкий) → БД</div>
             <div>💰 transactions_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ Finance API пагінація → БД</div>
             <div>📦 fba_inbound_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ FulfillmentInbound API → БД</div>
+            <div>🔍 data_quality_checker &nbsp;&nbsp;→ перевірка якості → Telegram алерт</div>
         </div>
     </div>
     </div>
