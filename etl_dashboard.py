@@ -303,8 +303,15 @@ def get_stats(schema_table, date_col):
     schema, table = parts[0], parts[1]
     if not table_exists(schema, table):
         return None, None
-    r = query(f'SELECT COUNT(*) FROM "{schema}"."{table}"')
+    
+    # Приблизний count з pg_class (мгновенно, без sequential scan)
+    r = query("""
+        SELECT reltuples::BIGINT 
+        FROM pg_class 
+        WHERE oid = %s::regclass
+    """, (f'"{schema}"."{table}"',))
     count = r[0][0] if r else 0
+    
     last_date = None
     if date_col:
         r2 = query(f'SELECT MAX("{date_col}") FROM "{schema}"."{table}"')
