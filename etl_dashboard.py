@@ -675,7 +675,6 @@ def render_sidebar():
 # ============================================================
 # PAGE: STATUS
 # ============================================================
-
 def page_status(data):
     now = now_kyiv()
     st.markdown(f"""
@@ -738,7 +737,9 @@ def page_status(data):
             <td><span class="freq-pill">{r['freq']}</span></td>
             <td>{badge_map.get(r['status'], '')}</td>
         </tr>"""
-st.markdown(f"""
+
+    # Ось тут була помилка — ці рядки мають бути ВСЕРЕДИНІ функції (з відступом)
+    st.markdown(f"""
     <div class="etl-wrap">
         <table class="etl-table">
             <thead><tr>
@@ -779,7 +780,7 @@ st.markdown(f"""
                 <span style="font-size:12px;font-weight:700;color:{text1}">📥 Collector Queue</span>
                 <span style="font-size:11px;color:#f59e0b">⏳ {pending_n} pending</span>
                 <span style="font-size:11px;color:#3b82f6">⬇️ {download_n} downloading</span>
-                {'<span style="font-size:11px;color:#ef4444">💥 ' + str(error_n) + ' error</span>' if error_n else ''}
+                {('<span style="font-size:11px;color:#ef4444">💥 ' + str(error_n) + ' error</span>') if error_n else ''}
             </div>
             <table class="etl-table">
                 <thead><tr><th>Task</th><th>Статус</th><th>Кількість</th><th>Вік</th></tr></thead>
