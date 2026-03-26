@@ -751,7 +751,7 @@ st.markdown(f"""
     <div class="etl-footer">cache 2хв · {len(filtered)}/{len(data)} таблиць · Kyiv TZ</div>
     """, unsafe_allow_html=True)
 
-# ── Черга pending_reports
+    # ── Черга pending_reports
     queue = load_pending_queue()
     if queue:
         pending_n  = sum(r[2] for r in queue if r[1] == 'pending')
