@@ -269,30 +269,21 @@ st.markdown(f"""
 # ============================================================
 # DB
 # ============================================================
-
-@st.cache_resource
-def get_conn():
-    db_url = st.secrets["DATABASE_URL"]
-    return psycopg2.connect(
-        db_url.replace("postgres://", "postgresql://", 1),
-        sslmode='require', connect_timeout=10
-    )
-
 def query(sql, params=None):
+    db_url = st.secrets["DATABASE_URL"]
     try:
-        conn = get_conn()
+        conn = psycopg2.connect(
+            db_url.replace("postgres://", "postgresql://", 1),
+            sslmode='require', connect_timeout=10
+        )
+        conn.autocommit = True
         with conn.cursor() as cur:
             cur.execute(sql, params or ())
-            return cur.fetchall()
+            result = cur.fetchall()
+        conn.close()
+        return result
     except Exception:
-        try:
-            st.cache_resource.clear()
-            conn = get_conn()
-            with conn.cursor() as cur:
-                cur.execute(sql, params or ())
-                return cur.fetchall()
-        except Exception:
-            return None
+        return None
 
 def table_exists(schema, table):
     r = query("SELECT EXISTS(SELECT FROM information_schema.tables WHERE table_schema=%s AND table_name=%s)", (schema, table))
