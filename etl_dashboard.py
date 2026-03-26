@@ -551,6 +551,19 @@ def load_growth_per_day():
         return {}
     return {row[0]: int(row[1]) for row in r}
 
+@st.cache_data(ttl=30)
+def load_pending_queue():
+    r = query("""
+        SELECT task_type, status, COUNT(*) as cnt,
+               MIN(created_at) as oldest
+        FROM public.pending_reports
+        WHERE status IN ('pending', 'downloading', 'error')
+        GROUP BY task_type, status
+        ORDER BY status, task_type
+    """)
+    if not r:
+        return []
+    return r
 
 @st.cache_data(ttl=60)
 def load_context_for_ai():
@@ -725,8 +738,7 @@ def page_status(data):
             <td><span class="freq-pill">{r['freq']}</span></td>
             <td>{badge_map.get(r['status'], '')}</td>
         </tr>"""
-
-    st.markdown(f"""
+st.markdown(f"""
     <div class="etl-wrap">
         <table class="etl-table">
             <thead><tr>
@@ -738,6 +750,44 @@ def page_status(data):
     </div>
     <div class="etl-footer">cache 2хв · {len(filtered)}/{len(data)} таблиць · Kyiv TZ</div>
     """, unsafe_allow_html=True)
+
+    # ── Черга pending_reports
+    queue = load_pending_queue()
+    if queue:
+        pending_n  = sum(r[2] for r in queue if r[1] == 'pending')
+        download_n = sum(r[2] for r in queue if r[1] == 'downloading')
+        error_n    = sum(r[2] for r in queue if r[1] == 'error')
+        rows_q = ""
+        for task_type, status, cnt, oldest in queue:
+            age = ""
+            if oldest:
+                oldest_naive = oldest.replace(tzinfo=None) if hasattr(oldest,'tzinfo') and oldest.tzinfo else oldest
+                mins = int((datetime.now() - oldest_naive).total_seconds() / 60)
+                age = f"{mins}хв" if mins < 60 else f"{mins//60}г {mins%60:02d}хв"
+            color = {"pending": "#f59e0b", "downloading": "#3b82f6", "error": "#ef4444"}.get(status, text4)
+            emoji = {"pending": "⏳", "downloading": "⬇️", "error": "💥"}.get(status, "●")
+            rows_q += f"""<tr>
+                <td style="padding:8px 14px;color:{text1};font-weight:600">{emoji} {task_type}</td>
+                <td style="padding:8px 14px;color:{color};font-weight:600">{status}</td>
+                <td style="padding:8px 14px;color:{text2};font-family:JetBrains Mono,monospace">{cnt}</td>
+                <td style="padding:8px 14px;color:{text4};font-family:JetBrains Mono,monospace;font-size:11px">{age}</td>
+            </tr>"""
+        st.markdown(f"""
+        <div style="margin-top:16px">
+        <div class="etl-wrap">
+            <div style="padding:10px 14px;border-bottom:1px solid {border};display:flex;align-items:center;gap:16px">
+                <span style="font-size:12px;font-weight:700;color:{text1}">📥 Collector Queue</span>
+                <span style="font-size:11px;color:#f59e0b">⏳ {pending_n} pending</span>
+                <span style="font-size:11px;color:#3b82f6">⬇️ {download_n} downloading</span>
+                {'<span style="font-size:11px;color:#ef4444">💥 ' + str(error_n) + ' error</span>' if error_n else ''}
+            </div>
+            <table class="etl-table">
+                <thead><tr><th>Task</th><th>Статус</th><th>Кількість</th><th>Вік</th></tr></thead>
+                <tbody>{rows_q}</tbody>
+            </table>
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ============================================================
 # PAGE: ANALYTICS
