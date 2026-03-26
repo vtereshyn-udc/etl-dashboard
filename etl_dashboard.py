@@ -1558,7 +1558,6 @@ def page_ai():
 
         st.session_state.ai_messages.append({"role": "assistant", "content": answer})
         st.rerun()
-
 def page_architecture():
     now = now_kyiv()
     st.markdown(f"""
@@ -1627,6 +1626,41 @@ def page_architecture():
             <div><span style="color:#8b5cf6">spapi.*</span> &nbsp;— orders, returns, ledger, sales_traffic</div>
             <div><span style="color:#f59e0b">api_ad.*</span> — SP / SB / SD campaigns</div>
             <div><span style="color:#22c55e">public.*</span> — etl_log, pending_reports, system_metrics</div>
+        </div>
+    </div>
+    </div>
+
+    <div class="stat-card"><h4>📁 СТРУКТУРА ФАЙЛІВ</h4>
+    <div style="font-family:JetBrains Mono,monospace;font-size:12px;color:{text2};line-height:1.8">
+        <div style="color:#3b82f6">project/</div>
+        <div style="margin-left:16px">
+            <div style="color:#f59e0b">├── SPAPI_Workers/</div>
+            <div style="margin-left:32px;color:{text4}">
+                <div>├── utils/db_queue.py</div>
+                <div>├── spapi_base.py</div>
+                <div>├── report_collector.py</div>
+                <div>├── sales_traffic_loader.py</div>
+                <div>├── ledger_detail_loader.py</div>
+                <div>├── ledger_summary_loader.py</div>
+                <div>├── promotions_loader.py</div>
+                <div>├── fba_returns_loader.py</div>
+                <div>├── fba_replacements_loader.py</div>
+                <div>├── shipments_fulfilled_loader.py</div>
+                <div>├── all_orders_loader.py</div>
+                <div>├── inventory_health_loader.py</div>
+                <div>├── transactions_loader.py</div>
+                <div>└── fba_inbound_shipments_loader.py</div>
+            </div>
+            <div style="color:{text2}">├── run_ads_forever.py</div>
+            <div style="color:{text2}">├── master_ads_loader.py</div>
+            <div style="color:{text2}">├── sb_loader_4h_senior.py</div>
+            <div style="color:{text2}">├── sd_loader_4h_senior.py</div>
+            <div style="color:{text2}">├── sp_loader_4h_senior.py</div>
+            <div style="color:{text2}">├── base_loader.py</div>
+            <div style="color:{text2}">├── circuit_breaker.py</div>
+            <div style="color:{text2}">├── telegram_notifier.py</div>
+            <div style="color:{text2}">├── system_monitor.py</div>
+            <div style="color:#22c55e">└── .env</div>
         </div>
     </div>
     </div>
