@@ -634,7 +634,7 @@ def render_sidebar():
         <hr class="sb-divider">
         """, unsafe_allow_html=True)
 
-        pages = ["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система", "🤖 AI"]
+        pages = ["📊 Статус", "📈 Аналітика", "🗄️ База даних", "🖥️ Система", "🤖 AI", "🗺️ Архітектура"]
         for p in pages:
             active = st.session_state.page == p
             if st.button(
@@ -1559,10 +1559,81 @@ def page_ai():
         st.session_state.ai_messages.append({"role": "assistant", "content": answer})
         st.rerun()
 
+def page_architecture():
+    now = now_kyiv()
+    st.markdown(f"""
+    <div class="page-header">
+        <div class="page-title">🗺️ Архітектура системи</div>
+        <div class="page-sub">ETL Pipeline · Amazon SP-API · {now.strftime('%Y-%m-%d %H:%M')} Kyiv</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    st.markdown(f"""
+    <div class="stat-card"><h4>⚡ ASYNC ЛОАДЕРИ — POST → Черга → Collector</h4>
+    <div style="font-family:JetBrains Mono,monospace;font-size:12px;color:{text2};line-height:2">
+        <div style="color:#3b82f6;font-weight:700;margin-bottom:8px">run_ads_forever.py (планувальник)</div>
+        <div style="margin-left:16px">
+            <div>📊 sales_traffic_loader &nbsp;→ <span style="color:#f59e0b">pending_reports</span> → collector → БД</div>
+            <div>📒 ledger_summary_loader &nbsp;→ <span style="color:#f59e0b">pending_reports</span> → collector → БД</div>
+            <div>📒 ledger_detail_loader &nbsp;&nbsp;→ <span style="color:#f59e0b">pending_reports</span> → collector → БД</div>
+            <div>🎁 promotions_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span style="color:#f59e0b">pending_reports</span> → collector → БД</div>
+            <div>🔄 fba_returns_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ <span style="color:#f59e0b">pending_reports</span> → collector → БД</div>
+            <div>🔁 fba_replacements_loader → <span style="color:#f59e0b">pending_reports</span> → collector → БД</div>
+            <div>🚚 shipments_fulfilled &nbsp;&nbsp;&nbsp;&nbsp;→ <span style="color:#f59e0b">pending_reports</span> → collector → БД</div>
+        </div>
+    </div>
+    </div>
+
+    <div class="stat-card"><h4>🔄 SYNC ЛОАДЕРИ — прямі виклики API</h4>
+    <div style="font-family:JetBrains Mono,monospace;font-size:12px;color:{text2};line-height:2">
+        <div style="margin-left:16px">
+            <div>🛒 all_orders_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ Orders API → БД</div>
+            <div>🏭 inventory_health_loader → Reports API (швидкий) → БД</div>
+            <div>📋 manage_fba_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ Reports API (швидкий) → БД</div>
+            <div>💰 transactions_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ Finance API пагінація → БД</div>
+            <div>📦 fba_inbound_loader &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ FulfillmentInbound API → БД</div>
+        </div>
+    </div>
+    </div>
+
+    <div class="stat-card"><h4>🎯 ADS ЛОАДЕРИ — паралельно через asyncio</h4>
+    <div style="font-family:JetBrains Mono,monospace;font-size:12px;color:{text2};line-height:2">
+        <div style="margin-left:16px">
+            <div>master_ads_loader.py</div>
+            <div style="margin-left:24px">
+                <div>🎯 sp_loader_4h_senior → Ads API → api_ad.sp_campaign_api</div>
+                <div>🧲 sb_loader_4h_senior → Ads API → api_ad.sb_campaign_api</div>
+                <div>📡 sd_loader_4h_senior → Ads API → api_ad.sd_campaign_api</div>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <div class="stat-card"><h4>🧵 DAEMON THREADS</h4>
+    <div style="font-family:JetBrains Mono,monospace;font-size:12px;color:{text2};line-height:2">
+        <div style="margin-left:16px">
+            <div>📥 report_collector &nbsp;&nbsp;→ кожні 15 хв перевіряє pending_reports</div>
+            <div>🖥️ system_monitor &nbsp;&nbsp;&nbsp;&nbsp;→ кожні 30с пише метрики сервера</div>
+            <div>🤖 telegram_bot &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ приймає команди</div>
+            <div>🔔 alerts_bot &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;→ моніторинг алертів</div>
+        </div>
+    </div>
+    </div>
+
+    <div class="stat-card"><h4>🗄️ POSTGRESQL (Heroku)</h4>
+    <div style="font-family:JetBrains Mono,monospace;font-size:12px;color:{text2};line-height:2">
+        <div style="margin-left:16px">
+            <div><span style="color:#3b82f6">csv.*</span> &nbsp;&nbsp;&nbsp;— shipments, promotions, inventory, transactions</div>
+            <div><span style="color:#8b5cf6">spapi.*</span> &nbsp;— orders, returns, ledger, sales_traffic</div>
+            <div><span style="color:#f59e0b">api_ad.*</span> — SP / SB / SD campaigns</div>
+            <div><span style="color:#22c55e">public.*</span> — etl_log, pending_reports, system_metrics</div>
+        </div>
+    </div>
+    </div>
+    """, unsafe_allow_html=True)
 # ============================================================
 # MAIN
 # ============================================================
-
 def main():
     if "page" not in st.session_state:
         st.session_state.page = "📊 Статус"
@@ -1578,6 +1649,8 @@ def main():
         page_system()
     elif page == "🤖 AI":
         page_ai()
+    elif page == "🗺️ Архітектура":
+        page_architecture()
     else:
         page_status(load_all())
 
