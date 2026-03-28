@@ -789,6 +789,58 @@ def page_status(data):
         </div>
         </div>
         """, unsafe_allow_html=True)
+        # ── Сьогодні
+today_runs = load_today_runs()
+if today_runs:
+    rows_t = ""
+    for task_type, ran_at, rows_n, elapsed, status in today_runs:
+        t = str(ran_at)[11:19] if ran_at else "—"
+        r = f"{rows_n:,}" if rows_n else "—"
+        e = f"{elapsed//60}хв {elapsed%60}с" if elapsed and elapsed > 60 else (f"{elapsed}с" if elapsed else "—")
+        s = '<span style="color:#22c55e">✅</span>' if status == "ok" else '<span style="color:#ef4444">❌</span>'
+        rows_t += f"""<tr>
+            <td style="padding:8px 14px;color:{text1};font-weight:600;font-family:JetBrains Mono,monospace;font-size:12px">{task_type}</td>
+            <td style="padding:8px 14px;color:#4a9e6b;font-family:JetBrains Mono,monospace;font-size:12px">{t}</td>
+            <td style="padding:8px 14px;color:{text2};font-family:JetBrains Mono,monospace;font-size:12px">{r}</td>
+            <td style="padding:8px 14px;color:{text4};font-family:JetBrains Mono,monospace;font-size:12px">{e}</td>
+            <td style="padding:8px 14px">{s}</td>
+        </tr>"""
+    total_ok  = sum(1 for *_, s in today_runs if s == "ok")
+    total_err = sum(1 for *_, s in today_runs if s != "ok")
+    st.markdown(f"""
+    <div style="margin-top:16px">
+    <div class="etl-wrap">
+        <div style="padding:10px 14px;border-bottom:1px solid {border};display:flex;align-items:center;gap:16px">
+            <span style="font-size:12px;font-weight:700;color:{text1}">📅 Сьогодні (24г)</span>
+            <span style="font-size:11px;color:#22c55e">✅ {total_ok} ok</span>
+            {(f'<span style="font-size:11px;color:#ef4444">❌ {total_err} помилок</span>') if total_err else ''}
+            <span style="font-size:11px;color:{text4}">{len(today_runs)} запусків</span>
+        </div>
+        <table class="etl-table">
+            <thead><tr>
+                <th>Task</th><th>Час</th><th>Рядків</th><th>Тривалість</th><th>Статус</th>
+            </tr></thead>
+            <tbody>{rows_t}</tbody>
+        </table>
+    </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+
+@st.cache_data(ttl=60)
+def load_today_runs():
+    r = query("""
+        SELECT task_type,
+               (ran_at AT TIME ZONE 'Europe/Kyiv')::text as ran_kyiv,
+               rows_saved, elapsed_sec::int, status
+        FROM public.etl_log
+        WHERE ran_at >= NOW() - INTERVAL '24 hours'
+        ORDER BY ran_at DESC
+    """)
+    if not r:
+        return []
+    return r
+        
 
 # ============================================================
 # PAGE: ANALYTICS
