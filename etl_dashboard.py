@@ -75,6 +75,83 @@ TASK_MAP = [
     ("ads",              "api_ad.sd_campaign_api",        "date",          "📡", "ADS SD"),
     ("inventory",        "csv.fba_inventory",             "snapshot_date", "🏭", "FBA Inventory Health"),
     ("manage_fba",       "csv.manage_fba_inventory",      "date",          "📋", "Manage FBA"),
+    ("awd_inventory",    "csv.inventory",                 "date",          "🏢", "AWD + FBA Inventory"),"""
+ETL Monitor v4.2
+- Sidebar навігація
+- Uptime воркерів (% успішних запусків)
+- Теплова карта
+- Алерти в Telegram
+- NEW: Сьогодні виджет (24г)
+"""
+
+import streamlit as st
+import psycopg2
+import pandas as pd
+from datetime import datetime, date, timedelta
+import pytz
+
+st.set_page_config(
+    page_title="ETL Monitor",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+KYIV_TZ = pytz.timezone("Europe/Kyiv")
+
+def now_kyiv():
+    return datetime.now(KYIV_TZ)
+
+# ============================================================
+# РОЗКЛАД v4.2
+# ============================================================
+SCHEDULE = [
+    (0,  45, "promotions",       None),
+    (1,  0,  "rank_tracker",     None),
+    (2,  0,  "ads",              30),
+    (3,  30, "ledger_summary",   2),
+    (3,  35, "ledger_detail",    7),
+    (4,  30, "bulk_daily",       None),
+    (5,  0,  "all_orders",       7),
+    (6,  0,  "ads",              7),
+    (6,  30, "brand_analytics",  None),
+    (7,  0,  "shipments",        None),
+    (7,  30, "fba_inbound",      None),
+    (8,  0,  "data_quality",     None),
+    (9,  0,  "inventory",        None),
+    (9,  20, "sales_traffic",    3),
+    (9,  30, "transactions",     7),
+    (10, 0,  "ads",              7),
+    (10, 5,  "alerts",           None),
+    (10, 10, "manage_fba",       None),
+    (10, 45, "promotions",       None),
+    (11, 0,  "fba_returns",      None),
+    (11, 20, "fba_replacements", None),
+    (13, 10, "awd_inventory",    None),
+    (13, 20, "sales_traffic",    5),
+    (13, 40, "all_orders",       2),
+    (14, 0,  "ads",              7),
+    (14, 10, "transactions",     7),
+    (14, 45, "promotions",       None),
+    (15, 0,  "inventory",        None),
+    (16, 10, "sales_traffic",    7),
+    (16, 20, "transactions",     60),
+    (16, 30, "manage_fba",       None),
+    (17, 10, "awd_inventory",    None),
+    (18, 0,  "ads",              7),
+    (19, 10, "awd_inventory",    None),
+    (19, 45, "promotions",       None),
+    (21, 0,  "inventory",        None),
+    (22, 0,  "manage_fba",       None),
+    (23, 30, "all_orders",       30),
+]
+
+TASK_MAP = [
+    ("ads",              "api_ad.sp_campaign_api",        "date",          "🎯", "ADS SP"),
+    ("ads",              "api_ad.sb_campaign_api",        "date",          "🧲", "ADS SB"),
+    ("ads",              "api_ad.sd_campaign_api",        "date",          "📡", "ADS SD"),
+    ("inventory",        "csv.fba_inventory",             "snapshot_date", "🏭", "FBA Inventory Health"),
+    ("manage_fba",       "csv.manage_fba_inventory",      "date",          "📋", "Manage FBA"),
     ("awd_inventory",    "csv.inventory",                 "date",          "🏢", "AWD + FBA Inventory"),
     ("all_orders",       "spapi.all_orders",              "purchase_date", "🛒", "All Orders"),
     ("shipments",        "csv.fulfilled_shipments",       "shipment_date", "🚚", "Fulfilled Shipments"),
@@ -509,6 +586,65 @@ def load_pending_queue():
         return []
     return r
 
+@st.cache_data(ttl=30)
+def load_collector_health():
+    r = query("""
+        SELECT
+            COUNT(*) FILTER (WHERE status = 'DONE')                        as total_done,
+            COUNT(*) FILTER (WHERE status = 'DONE'
+                AND updated_at >= NOW() - INTERVAL '24 hours')             as done_today,
+            COUNT(*) FILTER (WHERE status = 'pending')                     as pending_now,
+            COUNT(*) FILTER (WHERE status = 'error')                       as errors,
+            MAX(updated_at) FILTER (WHERE status = 'DONE')                 as last_collected,
+            MIN(created_at) FILTER (WHERE status = 'pending')              as oldest_pending
+        FROM public.pending_reports
+    """)
+    if not r:
+        return None
+    row = r[0]
+    return {
+        "total_done":     row[0] or 0,
+        "done_today":     row[1] or 0,
+        "pending_now":    row[2] or 0,
+        "errors":         row[3] or 0,
+        "last_collected": row[4],
+        "oldest_pending": row[5],
+    }
+
+SLA_DEADLINES = {
+    "rank_tracker":     "10:00",
+    "ads":              "10:30",
+    "ledger_summary":   "06:00",
+    "ledger_detail":    "06:00",
+    "bulk_daily":       "07:00",
+    "all_orders":       "07:00",
+    "brand_analytics":  "08:00",
+    "shipments":        "09:00",
+    "fba_inbound":      "10:00",
+    "data_quality":     "09:00",
+    "inventory":        "10:00",
+    "sales_traffic":    "11:00",
+    "transactions":     "11:00",
+    "manage_fba":       "11:00",
+    "fba_returns":      "12:00",
+    "fba_replacements": "12:00",
+    "promotions":       "12:00",
+}
+
+@st.cache_data(ttl=60)
+def load_sla_status():
+    r = query("""
+        SELECT task_type,
+               MIN(ran_at AT TIME ZONE 'Europe/Kyiv') as first_run_today,
+               bool_or(status = 'ok') as has_ok
+        FROM public.etl_log
+        WHERE ran_at >= NOW()::date
+        GROUP BY task_type
+    """)
+    if not r:
+        return {}
+    return {row[0]: {"first_run": row[1], "has_ok": row[2]} for row in r}
+
 @st.cache_data(ttl=60)
 def load_today_runs():
     r = query("""
@@ -752,6 +888,117 @@ def page_status(data):
         </div>
         """, unsafe_allow_html=True)
 
+    # ── Collector Health
+    ch = load_collector_health()
+    if ch:
+        last_col = ch.get("last_collected")
+        if last_col:
+            last_naive = last_col.replace(tzinfo=None) if hasattr(last_col, 'tzinfo') and last_col.tzinfo else last_col
+            age_sec = (datetime.now() - last_naive).total_seconds()
+            age_str = f"{int(age_sec/60)}хв тому" if age_sec < 3600 else f"{int(age_sec/3600)}г тому"
+            health_color = "#22c55e" if age_sec < 1800 else "#f59e0b" if age_sec < 3600 else "#ef4444"
+            health_text  = "HEALTHY" if age_sec < 1800 else "SLOW" if age_sec < 3600 else "STALE"
+        else:
+            age_str = "—"
+            health_color = "#ef4444"
+            health_text  = "NO DATA"
+
+        oldest_pend = ch.get("oldest_pending")
+        pend_age_str = ""
+        pend_color = text4
+        if oldest_pend:
+            op_naive = oldest_pend.replace(tzinfo=None) if hasattr(oldest_pend, 'tzinfo') and oldest_pend.tzinfo else oldest_pend
+            pend_min = int((datetime.now() - op_naive).total_seconds() / 60)
+            pend_age_str = f"{pend_min}хв" if pend_min < 60 else f"{pend_min//60}г {pend_min%60:02d}хв"
+            pend_color = "#22c55e" if pend_min < 30 else "#f59e0b" if pend_min < 60 else "#ef4444"
+
+        st.markdown(f"""
+        <div style="margin-top:16px">
+        <div class="etl-wrap">
+            <div style="padding:12px 14px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
+                <span style="font-size:12px;font-weight:700;color:{text1}">📥 Collector Health</span>
+                <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:{health_color}">
+                    <span style="width:8px;height:8px;border-radius:50%;background:{health_color};display:inline-block"></span>
+                    {health_text}
+                </span>
+                <span style="font-size:11px;color:{text4}">⏱️ Останній збір: <span style="color:{health_color}">{age_str}</span></span>
+                <span style="font-size:11px;color:#22c55e">✅ Сьогодні: {ch['done_today']} звітів</span>
+                <span style="font-size:11px;color:#3b82f6">📊 Всього: {ch['total_done']}</span>
+                {f'<span style="font-size:11px;color:#f59e0b">⏳ Pending: {ch["pending_now"]} (вік: <span style="color:{pend_color}">{pend_age_str}</span>)</span>' if ch['pending_now'] > 0 else ''}
+                {f'<span style="font-size:11px;color:#ef4444">💥 Errors: {ch["errors"]}</span>' if ch['errors'] > 0 else ''}
+            </div>
+        </div>
+        </div>
+        """, unsafe_allow_html=True)
+
+    # ── SLA Monitor
+    sla = load_sla_status()
+    now_kyiv_dt = now_kyiv()
+    sla_rows = ""
+    sla_ok = sla_miss = sla_pending = 0
+
+    for task, deadline_str in SLA_DEADLINES.items():
+        dh, dm = map(int, deadline_str.split(":"))
+        deadline_dt = KYIV_TZ.localize(datetime(now_kyiv_dt.year, now_kyiv_dt.month, now_kyiv_dt.day, dh, dm))
+        past_deadline = now_kyiv_dt > deadline_dt
+
+        log = sla.get(task)
+        if log and log.get("has_ok"):
+            first_run = log["first_run"]
+            if first_run:
+                fr_naive = first_run.replace(tzinfo=None) if hasattr(first_run, 'tzinfo') and first_run.tzinfo else first_run
+                fr_str = fr_naive.strftime("%H:%M:%S")
+                # Перевіряємо чи виконався до дедлайну
+                fr_kyiv = KYIV_TZ.localize(fr_naive) if not (hasattr(first_run, 'tzinfo') and first_run.tzinfo) else first_run
+                on_time = fr_kyiv <= deadline_dt
+                status_icon = '✅' if on_time else '⚠️'
+                status_color = "#22c55e" if on_time else "#f59e0b"
+                status_label = "вчасно" if on_time else "запізнення"
+                sla_ok += 1
+            else:
+                fr_str = "—"
+                status_icon = "❓"
+                status_color = text4
+                status_label = "—"
+        elif past_deadline:
+            fr_str = "—"
+            status_icon = "🔴"
+            status_color = "#ef4444"
+            status_label = "ПРОПУЩЕНО"
+            sla_miss += 1
+        else:
+            fr_str = "—"
+            status_icon = "⏳"
+            status_color = text4
+            status_label = f"до {deadline_str}"
+            sla_pending += 1
+
+        sla_rows += f"""<tr>
+            <td style="padding:7px 14px;color:{text1};font-weight:600;font-family:JetBrains Mono,monospace;font-size:12px">{task}</td>
+            <td style="padding:7px 14px;color:{text4};font-family:JetBrains Mono,monospace;font-size:11px">{deadline_str}</td>
+            <td style="padding:7px 14px;color:#4a9e6b;font-family:JetBrains Mono,monospace;font-size:12px">{fr_str}</td>
+            <td style="padding:7px 14px;color:{status_color};font-weight:600;font-size:12px">{status_icon} {status_label}</td>
+        </tr>"""
+
+    st.markdown(f"""
+    <div style="margin-top:16px">
+    <div class="etl-wrap">
+        <div style="padding:10px 14px;border-bottom:1px solid {border};display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+            <span style="font-size:12px;font-weight:700;color:{text1}">🎯 SLA Monitor</span>
+            <span style="font-size:11px;color:#22c55e">✅ Вчасно: {sla_ok}</span>
+            {f'<span style="font-size:11px;color:#ef4444">🔴 Пропущено: {sla_miss}</span>' if sla_miss > 0 else ''}
+            <span style="font-size:11px;color:{text4}">⏳ Очікується: {sla_pending}</span>
+        </div>
+        <table class="etl-table">
+            <thead><tr>
+                <th>Task</th><th>Дедлайн</th><th>Виконано о</th><th>SLA</th>
+            </tr></thead>
+            <tbody>{sla_rows}</tbody>
+        </table>
+    </div>
+    </div>
+    """, unsafe_allow_html=True)
+
     # ── Сьогодні (24г)
     today_runs = load_today_runs()
     if today_runs:
@@ -798,6 +1045,43 @@ def page_status(data):
         </div>
         </div>
         """, unsafe_allow_html=True)
+
+    # ── Бар чарт — рядків по task за сьогодні
+    if today_runs:
+        task_rows = {}
+        for row in today_runs:
+            task_type, _, rows_n, _, status = row
+            if rows_n and status == "ok":
+                task_rows[task_type] = task_rows.get(task_type, 0) + (rows_n or 0)
+
+        task_rows = {k: v for k, v in task_rows.items() if v > 0}
+        if task_rows:
+            sorted_tasks = sorted(task_rows.items(), key=lambda x: x[1], reverse=True)
+            max_v = max(v for _, v in sorted_tasks) or 1
+            n = len(sorted_tasks)
+            w, h = 900, 180
+            pad_l = 140
+            bar_h = max(10, (h - n * 4) // n)
+
+            bars = ""
+            for i, (task, val) in enumerate(sorted_tasks):
+                bar_w = max(2, int(val / max_v * (w - pad_l - 20)))
+                y = i * (bar_h + 4)
+                label = f"{val/1000:.0f}K" if val >= 1000 else str(val)
+                bars += f'<rect x="{pad_l}" y="{y}" width="{bar_w}" height="{bar_h}" fill="#3b82f6" opacity=".8" rx="3"/>'
+                bars += f'<text x="{pad_l - 6}" y="{y + bar_h//2 + 4}" text-anchor="end" font-size="11" fill="{text2}" font-family="JetBrains Mono,monospace">{task}</text>'
+                bars += f'<text x="{pad_l + bar_w + 6}" y="{y + bar_h//2 + 4}" font-size="11" fill="{text1}" font-family="JetBrains Mono,monospace">{label}</text>'
+
+            chart_h = n * (bar_h + 4)
+            svg = f'<svg viewBox="0 0 {w} {chart_h + 10}" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-height:350px">{bars}</svg>'
+
+            st.markdown(f"""
+            <div style="margin-top:12px">
+            <div class="stat-card"><h4>📊 Рядків збережено сьогодні по воркерам</h4>
+            {svg}
+            </div>
+            </div>
+            """, unsafe_allow_html=True)
 
 # ============================================================
 # PAGE: ANALYTICS
