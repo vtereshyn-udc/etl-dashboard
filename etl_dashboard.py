@@ -835,6 +835,9 @@ def page_status(data):
             pend_age_str = f"{pend_min}хв" if pend_min < 60 else f"{pend_min//60}г {pend_min%60:02d}хв"
             pend_color = "#22c55e" if pend_min < 30 else "#f59e0b" if pend_min < 60 else "#ef4444"
 
+        pending_html = f'<span style="font-size:11px;color:#f59e0b">⏳ Pending: {ch["pending_now"]} (вік: {pend_age_str})</span>' if ch['pending_now'] > 0 else ''
+        errors_html  = f'<span style="font-size:11px;color:#ef4444">💥 Errors: {ch["errors"]}</span>' if ch['errors'] > 0 else ''
+
         st.markdown(f"""
         <div style="margin-top:16px">
         <div class="etl-wrap">
@@ -844,11 +847,11 @@ def page_status(data):
                     <span style="width:8px;height:8px;border-radius:50%;background:{health_color};display:inline-block"></span>
                     {health_text}
                 </span>
-                <span style="font-size:11px;color:{text4}">⏱️ Останній збір: <span style="color:{health_color}">{age_str}</span></span>
+                <span style="font-size:11px;color:{text4}">⏱️ Останній збір: {age_str}</span>
                 <span style="font-size:11px;color:#22c55e">✅ Сьогодні: {ch['done_today']} звітів</span>
                 <span style="font-size:11px;color:#3b82f6">📊 Всього: {ch['total_done']}</span>
-                {f'<span style="font-size:11px;color:#f59e0b">⏳ Pending: {ch["pending_now"]} (вік: <span style="color:{pend_color}">{pend_age_str}</span>)</span>' if ch['pending_now'] > 0 else ''}
-                {f'<span style="font-size:11px;color:#ef4444">💥 Errors: {ch["errors"]}</span>' if ch['errors'] > 0 else ''}
+                {pending_html}
+                {errors_html}
             </div>
         </div>
         </div>
