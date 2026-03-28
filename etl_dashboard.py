@@ -561,7 +561,7 @@ def load_sla_status():
                MIN(ran_at AT TIME ZONE 'Europe/Kyiv') as first_run_today,
                bool_or(status = 'ok') as has_ok
         FROM public.etl_log
-        WHERE ran_at >= NOW()::date
+        WHERE ran_at >= NOW() - INTERVAL '24 hours'
         GROUP BY task_type
     """)
     if not r:
