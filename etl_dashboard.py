@@ -838,24 +838,7 @@ def page_status(data):
         pending_html = f'<span style="font-size:11px;color:#f59e0b">⏳ Pending: {ch["pending_now"]} (вік: {pend_age_str})</span>' if ch['pending_now'] > 0 else ''
         errors_html  = f'<span style="font-size:11px;color:#ef4444">💥 Errors: {ch["errors"]}</span>' if ch['errors'] > 0 else ''
 
-        st.markdown(f"""
-        <div style="margin-top:16px">
-        <div class="etl-wrap">
-            <div style="padding:12px 14px;display:flex;align-items:center;gap:20px;flex-wrap:wrap">
-                <span style="font-size:12px;font-weight:700;color:{text1}">📥 Collector Health</span>
-                <span style="display:inline-flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:{health_color}">
-                    <span style="width:8px;height:8px;border-radius:50%;background:{health_color};display:inline-block"></span>
-                    {health_text}
-                </span>
-                <span style="font-size:11px;color:{text4}">⏱️ Останній збір: {age_str}</span>
-                <span style="font-size:11px;color:#22c55e">✅ Сьогодні: {ch['done_today']} звітів</span>
-                <span style="font-size:11px;color:#3b82f6">📊 Всього: {ch['total_done']}</span>
-                {pending_html}
-                {errors_html}
-            </div>
-        </div>
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"""<div style="margin-top:16px;background:{bg2};border:1px solid {border};border-radius:12px;padding:12px 16px;display:flex;align-items:center;gap:20px;flex-wrap:wrap"><span style="font-size:12px;font-weight:700;color:{text1}">📥 Collector Health</span><span style="font-size:11px;font-weight:700;color:{health_color}">● {health_text}</span><span style="font-size:11px;color:{text4}">⏱️ Останній збір: {age_str}</span><span style="font-size:11px;color:#22c55e">✅ Сьогодні: {ch['done_today']} звітів</span><span style="font-size:11px;color:#3b82f6">📊 Всього: {ch['total_done']}</span>{pending_html}{errors_html}</div>""", unsafe_allow_html=True)
 
     # ── SLA Monitor
     sla = load_sla_status()
